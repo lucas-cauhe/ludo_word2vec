@@ -9,13 +9,11 @@ pub mod Softmax{
     
     use crate::SkipGram;
     use crate::utils;
-    use ndarray_rand::rand_distr::num_traits::Pow;
     use utils::utils::*;
     use ndarray::{Array, arr1};
     use ndarray::{ArrayBase, OwnedRepr, Dim};
     use ndarray_rand::RandomExt;
     use ndarray_rand::rand_distr::Uniform;
-    use fast_fp::{ff64};
     
     type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
 
@@ -30,11 +28,11 @@ pub mod Softmax{
             },
         };
         let d_len: i32 = data.len().try_into().expect("Couldn't perform conversion to integer");
-        let mut precise_error = vec![0.; props.batches as usize];
-        let mut quick_error = vec![0.; props.batches as usize];
+        //let mut precise_error = vec![0.; props.batches as usize];
+        let mut quick_error = 0.;//vec![0.; props.batches as usize];
 
         let mut WInputs = Array::random((d_len as usize, props.d as usize), Uniform::<f64>::new(-2., 2.)); // assuming rows x cols
-        let mut WOutputs = Array::random((d_len as usize, props.d as usize), Uniform::<f64>::new(-2., 2.));
+        let mut WOutputs = Array::random((props.d as usize, d_len as usize), Uniform::<f64>::new(-2., 2.));
 
         println!("Starting input weights: {:?}", &WInputs);
         println!("Which is currently pointing at: {:?}", &WInputs.as_ptr());
@@ -56,7 +54,7 @@ pub mod Softmax{
                 
                 let hidden = WInputs.row(i.try_into().unwrap()).to_owned();
                 // if activation function is taken into account here should be utilized
-                let ypred = &hidden.dot(&WOutputs.t());
+                let ypred = &hidden.dot(&WOutputs);
                 //apply softmax
                 let ypred = &softmax(ypred);
                 // take context words one-hot representation ( [0 0 1 1 0 1 1 0 0 0]  = ytrue)
@@ -65,27 +63,24 @@ pub mod Softmax{
                 // compute error from the output layer -> ypred - ytrue
                 // compute the sum error like: (k-1)*ypred + error_ctx
                 let error_ctx = ypred - &arr1(ytrue); 
-                
-                let error_ctx = error_ctx.map(|v| f64::from(ff64(*v))); // prevent NaN
-                println!("Error_ctx is now: {:?}", &error_ctx);
-                let sum_error = ((props.w_size-1) as f64)*ypred + error_ctx; 
-                let sum_error = sum_error.map(|v| f64::from(ff64(*v)));
-                println!("Summed error is currently: {:?}", &sum_error);
+                //println!("Error_ctx is now: {:?}", &error_ctx);
+                let sum_error = ((ctxMap.get(&i).unwrap().len()-1) as f64)*ypred + error_ctx; 
+                //println!("Summed error is currently: {:?}", &sum_error);
                 // for each computed sum error, add it to acc_error and decide which performs better (log_prob or this one)
                 // idealy you should choose between precise/thorough loss function (log_prob) or ypred sum one
                 
-                quick_error[(props.batches-val) as usize] += sum_error.iter().map(|x| x.abs()).sum::<f64>(); // the total error is both x axis sided
+                quick_error += sum_error.iter().map(|x| x.abs()).sum::<f64>(); // the total error is both x axis sided
                 
-                precise_error[(props.batches-val) as usize] += log_probability(&d_len, &props.w_size, &WOutputs, &(i as usize), &hidden, ctxMap);
+                //precise_error[(props.batches-val) as usize] += log_probability(&d_len, &props.w_size, &WOutputs, &(i as usize), &hidden, ctxMap);
                 
-                // perform backward propagation
+                // perform gradient descent
                 
-                let grad_input = sum_error.dot(&WOutputs).map(|v| f64::from(ff64(*v)));
+                let grad_input = WOutputs.dot(&sum_error);
                 let s_len = sum_error.len();
                 let dim = props.d as usize;
                 let sum_error_2d = sum_error.into_shape((s_len, 1)).unwrap();
                 let hidden_2d = hidden.into_shape((1, dim)).unwrap();
-                let grad_output = sum_error_2d.dot(&hidden_2d).map(|v| f64::from(ff64(*v)));
+                let grad_output = sum_error_2d.dot(&hidden_2d);
                 
 
                 let prod = props.lr*grad_input;
@@ -101,8 +96,9 @@ pub mod Softmax{
                     ith_row.assign(&subt);
                 }
                 
-                let out_prod = (props.lr*grad_output).map(|v| f64::from(ff64(*v)));
-                WOutputs = WOutputs.sub(&out_prod);
+                
+                let out_prod = (props.lr*grad_output);
+                WOutputs = WOutputs.sub(&out_prod.t());
                 //println!("Current output prod: {:?}", out_prod);
 
                 if  f64::is_nan(out_prod[(0,0)]) {
@@ -112,14 +108,15 @@ pub mod Softmax{
 
             }
             //println!("Computed errors in this batch: ");
-            println!("Quick error: {:?}", quick_error[(props.batches-val) as usize]);
+            println!("Quick error: {:?}", quick_error);
             //println!("Precise error: {:?}", precise_error[(props.batches-val) as usize]);
 
-            //val -= 1;
             
-            if quick_error[(props.batches-val) as usize] - quick_error[(props.batches-val) as usize] > 0.{
+            
+            if quick_error < 100. {
                 break;
             }
+            quick_error = 0.;
             
         }
         Ok((WInputs, WOutputs))

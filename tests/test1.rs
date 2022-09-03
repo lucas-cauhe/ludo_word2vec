@@ -4,12 +4,12 @@ use word_embeddings::{CustomActivationFunction, CustomProbFunctionType, SkipGram
 fn trains_ok() {
     let mut model = SkipGram {
         w_size: 2,
-        d: 5,
-        lr: 0.1,
+        d: 20,
+        lr: 0.01,
         prob_function: CustomProbFunctionType::Softmax,
         activation_fn: CustomActivationFunction::Sigmoid,
         dropout: false,
-        batches: 15,
+        batches: 20,
         data: None,
         k: None
     };

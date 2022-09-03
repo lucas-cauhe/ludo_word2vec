@@ -62,10 +62,15 @@ pub mod utils {
         let mut tot_sum = 0.;
         let mut ret_array = arr1(&vec![0.; a.len()]);
         for v in a {
-            tot_sum += f64::exp(*v);
+            tot_sum += v.exp();
+        }
+        if tot_sum < 1.1e-5{
+            println!("-----------Tot_sum is now-------------------");
+            println!("{tot_sum}");
+            println!("This is current prediction: {:?}", a);
         }
         for (k, v) in a.iter().enumerate() {
-            ret_array[k] = f64::exp(*v) / tot_sum;
+            ret_array[k] = v.exp() / tot_sum;
         }
         ret_array
     }
