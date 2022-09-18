@@ -28,33 +28,31 @@ pub mod Softmax{
             },
         };
         let d_len: i32 = data.len().try_into().expect("Couldn't perform conversion to integer");
-        //let mut precise_error = vec![0.; props.batches as usize];
-        let mut quick_error = 0.;//vec![0.; props.batches as usize];
+        let mut prev_error = -1000000.;
+        let mut precise_error = 0.;
+        let six: f64 = 6.;
+        let init = (-(six/(d_len as f64)).sqrt(), (six/(d_len as f64)).sqrt()); // Xavier initialization
+        let mut WInputs = Array::random((d_len as usize, props.d as usize), Uniform::<f64>::new(&init.0, &init.1)); 
+        let mut WOutputs = Array::random((props.d as usize, d_len as usize), Uniform::<f64>::new(&init.0, &init.1));
 
-        let mut WInputs = Array::random((d_len as usize, props.d as usize), Uniform::<f64>::new(-2., 2.)); // assuming rows x cols
-        let mut WOutputs = Array::random((props.d as usize, d_len as usize), Uniform::<f64>::new(-2., 2.));
-
-        println!("Starting input weights: {:?}", &WInputs);
-        println!("Which is currently pointing at: {:?}", &WInputs.as_ptr());
-        println!("Starting output weights: {:?}", &WOutputs);
+        
         
         // for a number (preset) of iterations or until error converges to 0
         let mut val = props.batches;
         loop { // start with precise error
             
             
-            println!("Batch: {} is starting now", val);
+            //println!("Batch: {} is starting now", val);
             // for each word in data
             for i in 0..d_len {
-                
-                // take its one hot representation
-                let _one_hot = OneHot(&[i].to_vec(), d_len);
-                
+                //println!("{i}/{d_len}");
                 // perform feed-forward
                 
                 let hidden = WInputs.row(i.try_into().unwrap()).to_owned();
                 // if activation function is taken into account here should be utilized
+
                 let ypred = &hidden.dot(&WOutputs);
+                
                 //apply softmax
                 let ypred = &softmax(ypred);
                 // take context words one-hot representation ( [0 0 1 1 0 1 1 0 0 0]  = ytrue)
@@ -63,16 +61,17 @@ pub mod Softmax{
                 // compute error from the output layer -> ypred - ytrue
                 // compute the sum error like: (k-1)*ypred + error_ctx
                 let error_ctx = ypred - &arr1(ytrue); 
-                //println!("Error_ctx is now: {:?}", &error_ctx);
-                let sum_error = ((ctxMap.get(&i).unwrap().len()-1) as f64)*ypred + error_ctx; 
-                //println!("Summed error is currently: {:?}", &sum_error);
+                // sum_error should eventually converge to 0
+                let sum_error = ((ctxMap.get(&i).unwrap().len()-1) as f64)*ypred + error_ctx;
+                
                 // for each computed sum error, add it to acc_error and decide which performs better (log_prob or this one)
                 // idealy you should choose between precise/thorough loss function (log_prob) or ypred sum one
                 
-                quick_error += sum_error.iter().map(|x| x.abs()).sum::<f64>(); // the total error is both x axis sided
-                
-                //precise_error[(props.batches-val) as usize] += log_probability(&d_len, &props.w_size, &WOutputs, &(i as usize), &hidden, ctxMap);
-                
+                let quick_error = sum_error.iter().map(|x| x.abs()).sum::<f64>(); // the total error is both x axis sided
+                if quick_error < 10. {
+                    println!("Current sum_error for indexed word {}, is : {:?}", &i, quick_error);
+                }
+                precise_error += log_probability(&i, ctxMap, ypred);
                 // perform gradient descent
                 
                 let grad_input = WOutputs.dot(&sum_error);
@@ -84,15 +83,12 @@ pub mod Softmax{
                 
 
                 let prod = props.lr*grad_input;
-                //println!("Current input prod: {:?}", &prod);
+                
                 let mut ith_row = WInputs.row_mut(i as usize);
                 {
                     let ith_row_cp = ith_row.to_owned();
                     let subt  = ith_row_cp - prod;
                     
-                    /* for (k, v) in subt.iter().enumerate() {
-                        ith_row[k] = *v;
-                    } */
                     ith_row.assign(&subt);
                 }
                 
@@ -103,20 +99,22 @@ pub mod Softmax{
 
                 if  f64::is_nan(out_prod[(0,0)]) {
                     println!("I am NaN");
+                    println!("sum_error{:?}", sum_error_2d);
                     return Ok((WInputs, WOutputs))
                 }
 
             }
-            //println!("Computed errors in this batch: ");
-            println!("Quick error: {:?}", quick_error);
-            //println!("Precise error: {:?}", precise_error[(props.batches-val) as usize]);
+            precise_error = precise_error / d_len as f64;
+            println!("Precise error: {:?}", precise_error);
 
             
             
-            if quick_error < 100. {
+            if prev_error > precise_error+5. {
                 break;
             }
-            quick_error = 0.;
+            prev_error = precise_error;
+            precise_error = 0.;
+            
             
         }
         Ok((WInputs, WOutputs))
@@ -134,6 +132,26 @@ pub mod Softmax{
         }
         repr
     }
+
+    pub fn predict(w_in: &T, w_out: &T, model: &SkipGram, inputs: &[&str]){
+        let vocab = model.data.as_ref().unwrap();
+        for inp in 0..inputs.len() {
+            
+            if let Some(pos) = vocab.iter().position(|s| s == inputs[inp]){
+                // Make prediction
+                let hidden = w_in.row(pos).to_owned();
+                let ypred = &hidden.dot(w_out);
+                let ypred = &softmax(ypred);
+
+                println!("Prediction for word {:?}: {:?}", inputs[inp], ypred);
+
+            } else {
+                println!("Word {:?} not found in training vocabulary", inputs[inp]);
+            }
+        }
+        
+
+    }   
 
     
 }

@@ -1,16 +1,11 @@
 
 
 pub mod utils {
-    use std::{collections::HashMap, cmp::min};
+    use std::{collections::HashMap, cmp::{min}};
 
     use ndarray::{ArrayBase, OwnedRepr, Dim, Array, arr1};
     type T2 = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
     type T1 = ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>>;
-    /* fn MMult(m1: &WMatrix, m2: &WMatrix) -> Result<WMatrix, io::Error> {
-        // If you see any crate which does matrix multiplication, implement it for WMatrix type
-        // otherwise, simply multiply 🙃
-        
-    } */
     
     pub fn build_context(c: &Vec<&str>, w_size: &i32, content_array: &Vec<String>) -> Result<HashMap<i32, Vec<i32>>, String> {
         let mut context_map = HashMap::<i32, Vec<i32>>::new(); // Key: index in cleaned dataset, Values: context indices
@@ -36,25 +31,25 @@ pub mod utils {
         Ok(context_map)
     }
     
-    pub fn log_probability(T: &i32, k: &i32, WOutput: &T2, ckey: &usize, h: &T1, ctxMap: &HashMap<i32, Vec<i32>>) -> f64 {
+    pub fn log_probability(ckey: &i32, ctxMap: &HashMap<i32, Vec<i32>>, pred: &T1) -> f64 {
         let mut brute_cost = 0.;
         
-        for ctxkey in ctxMap.get(k).unwrap() {
-            let prob = prob_function(*ckey, ctxkey, WOutput, h);
+        for ctxkey in ctxMap.get(ckey).unwrap() {
+            let prob = prob_function(*ckey as usize, ctxkey, pred);
             brute_cost += f64::ln(prob);
         }
         brute_cost
 
     }
 
-    fn prob_function(c_word: usize, ctx_word: &i32, non_ctx_words: &T2, h: &T1) -> f64 {
+    fn prob_function(c_word: usize, ctx_word: &i32, predicted_values: &T1) -> f64 {
         let mut prob_sum = 0.;
-        for w in 0..non_ctx_words.nrows(){
+        for w in 0..predicted_values.len(){
             if w != c_word {
-                prob_sum += f64::exp(non_ctx_words.row(w).dot(&h.t()));
+                prob_sum += f64::exp(*predicted_values.get(w).unwrap());
             }
         }
-        let ctx_product = f64::exp(non_ctx_words.row(*ctx_word as usize).dot(&h.t()));
+        let ctx_product = f64::exp(*predicted_values.get(*ctx_word as usize).unwrap());
         ctx_product / prob_sum
     } 
 
@@ -62,15 +57,15 @@ pub mod utils {
         let mut tot_sum = 0.;
         let mut ret_array = arr1(&vec![0.; a.len()]);
         for v in a {
-            tot_sum += v.exp();
+            tot_sum += v.max(1e-10).exp();
         }
-        if tot_sum < 1.1e-5{
+       /*  if tot_sum < 1.1e-5{
             println!("-----------Tot_sum is now-------------------");
             println!("{tot_sum}");
             println!("This is current prediction: {:?}", a);
-        }
+        } */
         for (k, v) in a.iter().enumerate() {
-            ret_array[k] = v.exp() / tot_sum;
+            ret_array[k] = v.max(1e-10).exp() / tot_sum;
         }
         ret_array
     }

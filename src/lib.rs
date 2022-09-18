@@ -1,5 +1,6 @@
 extern crate ndarray;
-use std::{collections::HashMap, borrow::{Borrow, BorrowMut}};
+extern crate serde_json;
+use std::{collections::HashMap, default};
 
 use itertools::Itertools;
 use regex::Regex;
@@ -9,7 +10,6 @@ pub mod utils;
 use utils::utils::{build_context};
 use ndarray::{ArrayBase, OwnedRepr, Dim};
 use ProbabilityFunctions::{Softmax};
-type WMatrix = Vec<Vec<f64>>;
 type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
 
 #[cfg(test)]
@@ -21,7 +21,7 @@ mod tests {
     }
 }
 
-// TAKE A LOOK AT THE CONTEXT STUFFx
+
 
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
@@ -79,20 +79,21 @@ impl SkipGram {
         
         let content = fs::read_to_string(path).unwrap();
         let content = format!(r"{}", content);
-        println!("{:?}", &content);
+        //println!("{:?}", &content);
         let re = Regex::new(r"[[:punct:]\n]").unwrap();
-        let content_ = re.replace_all(&content, "");
+        let content_ = re.replace_all(&content, " ");
         
         
-        println!("{:?}", &content_);
+        //println!("{:?}", &content_);
 
-        let groomed_content: Vec<String> = content_.to_lowercase().split(' ').unique().map(|w| w.to_string()).collect();
-
-        let context_map = build_context(&content_.to_lowercase().split(' ').collect(), &self.w_size, &groomed_content);
+        let groomed_content: Vec<String> = content_.to_lowercase().split(' ').unique().map(|w| w.to_string()).filter(|w| w!="").collect();
+        println!("{:?}", &groomed_content);
+        let context_map = build_context(&content_.to_lowercase().split(' ').filter(|w| *w!="").collect(), &self.w_size, &groomed_content);
 
         
         match context_map {
             Ok(m) => {
+                self.d = (groomed_content.len() as f32 * 0.85) as i32;
                 self.data = Some(groomed_content);
                 Ok(m)
             },
@@ -100,7 +101,7 @@ impl SkipGram {
         }
         
         
-        // lemmatizing, etc..
+        // lemmatizing, etc.. (not for now)
     }
 
     pub fn train(&self, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<(T, T), String> {
@@ -108,6 +109,16 @@ impl SkipGram {
         
         match self.prob_function {
             CustomProbFunctionType::Softmax => Ok(Softmax::train(&self, ctxMap)?),
+            CustomProbFunctionType::HSoftmax => Err("Error".to_string()),//HSoftmax::train(self_copy),
+            CustomProbFunctionType::NCE => Err("Error".to_string())//NCE::train(self_copy),
+        }
+    }
+
+    pub fn predict(&self, w_in: &T, w_out: &T, model: &SkipGram, inputs: &[&str]) -> Result<(), String> {
+        // Here you have to obtain metrics as the model gets trained
+        
+        match self.prob_function {
+            CustomProbFunctionType::Softmax => Ok(Softmax::predict(w_in, w_out, model, inputs)),
             CustomProbFunctionType::HSoftmax => Err("Error".to_string()),//HSoftmax::train(self_copy),
             CustomProbFunctionType::NCE => Err("Error".to_string())//NCE::train(self_copy),
         }
