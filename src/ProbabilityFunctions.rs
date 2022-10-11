@@ -2,120 +2,232 @@
 pub mod Softmax{
     extern crate ndarray;
     extern crate ndarray_rand;
+    use core::slice::SlicePattern;
     use std::collections::HashMap;
     extern crate activation_functions;
-    use std::ops::Sub;
-    use std::{vec,};
+    use std::iter::Map;
+    use std::ops::{ AddAssign, Range};
+    use std::{vec, cmp,};
     
     use crate::SkipGram;
     use crate::utils;
     use utils::utils::*;
-    use ndarray::{Array, arr1};
+    use ndarray::{Array, arr1, ViewRepr};
     use ndarray::{ArrayBase, OwnedRepr, Dim};
     use ndarray_rand::RandomExt;
     use ndarray_rand::rand_distr::Uniform;
     
     type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
+    type T2 = ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>>;
+    type V = ArrayBase<ViewRepr<f64>, Dim<[usize; 2]>>;
+    enum InitializationMethods {
+        Xavier,
+        Default
+    }
 
-    pub fn train<'a>(props: &SkipGram, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<(T, T), String> {
-        
-        // initialize the random input and output weights matrix
-        let non: Vec<String> = Vec::new();
-        let data = match props.data {
-            Some(ref v) => v,
-            None => {
-                &non
+    fn initialization_method(method: InitializationMethods, dimensions: &i32) -> (f64, f64) {
+        match method {
+            InitializationMethods::Xavier => {
+                (-(6./(*dimensions as f64)).sqrt(), (6./(*dimensions as f64)).sqrt())
             },
-        };
-        let d_len: i32 = data.len().try_into().expect("Couldn't perform conversion to integer");
-        let mut prev_error = -1000000.;
-        let mut precise_error = 0.;
-        let six: f64 = 6.;
-        let init = (-(six/(d_len as f64)).sqrt(), (six/(d_len as f64)).sqrt()); // Xavier initialization
-        let mut WInputs = Array::random((d_len as usize, props.d as usize), Uniform::<f64>::new(&init.0, &init.1)); 
-        let mut WOutputs = Array::random((props.d as usize, d_len as usize), Uniform::<f64>::new(&init.0, &init.1));
-
-        
-        
-        // for a number (preset) of iterations or until error converges to 0
-        let mut val = props.batches;
-        loop { // start with precise error
-            
-            
-            //println!("Batch: {} is starting now", val);
-            // for each word in data
-            for i in 0..d_len {
-                //println!("{i}/{d_len}");
-                // perform feed-forward
-                
-                let hidden = WInputs.row(i.try_into().unwrap()).to_owned();
-                // if activation function is taken into account here should be utilized
-
-                let ypred = &hidden.dot(&WOutputs);
-                
-                //apply softmax
-                let ypred = &softmax(ypred);
-                // take context words one-hot representation ( [0 0 1 1 0 1 1 0 0 0]  = ytrue)
-                let ytrue = &OneHot(ctxMap.get(&i).unwrap(), d_len);
-                
-                // compute error from the output layer -> ypred - ytrue
-                // compute the sum error like: (k-1)*ypred + error_ctx
-                let error_ctx = ypred - &arr1(ytrue); 
-                // sum_error should eventually converge to 0
-                let sum_error = ((ctxMap.get(&i).unwrap().len()-1) as f64)*ypred + error_ctx;
-                
-                // for each computed sum error, add it to acc_error and decide which performs better (log_prob or this one)
-                // idealy you should choose between precise/thorough loss function (log_prob) or ypred sum one
-                
-                let quick_error = sum_error.iter().map(|x| x.abs()).sum::<f64>(); // the total error is both x axis sided
-                if quick_error < 10. {
-                    println!("Current sum_error for indexed word {}, is : {:?}", &i, quick_error);
-                }
-                precise_error += log_probability(&i, ctxMap, ypred);
-                // perform gradient descent
-                
-                let grad_input = WOutputs.dot(&sum_error);
-                let s_len = sum_error.len();
-                let dim = props.d as usize;
-                let sum_error_2d = sum_error.into_shape((s_len, 1)).unwrap();
-                let hidden_2d = hidden.into_shape((1, dim)).unwrap();
-                let grad_output = sum_error_2d.dot(&hidden_2d);
-                
-
-                let prod = props.lr*grad_input;
-                
-                let mut ith_row = WInputs.row_mut(i as usize);
-                {
-                    let ith_row_cp = ith_row.to_owned();
-                    let subt  = ith_row_cp - prod;
-                    
-                    ith_row.assign(&subt);
-                }
-                
-                
-                let out_prod = (props.lr*grad_output);
-                WOutputs = WOutputs.sub(&out_prod.t());
-                //println!("Current output prod: {:?}", out_prod);
-
-                if  f64::is_nan(out_prod[(0,0)]) {
-                    println!("I am NaN");
-                    println!("sum_error{:?}", sum_error_2d);
-                    return Ok((WInputs, WOutputs))
-                }
-
+            InitializationMethods::Default => {
+                (-(1./(2.* *dimensions as f64)), 1./(2.**dimensions as f64))
             }
-            precise_error = precise_error / d_len as f64;
-            println!("Precise error: {:?}", precise_error);
+        }
+    }
 
-            
-            
-            if prev_error > precise_error+5. {
+    fn initialize_weight_matrices(nn_structure: &[i32], initial_neurons: i32) -> Result<Vec<T>, String> {
+
+        let initialized_matrices = vec![];
+        let init = initialization_method(InitializationMethods::Xavier, &initial_neurons);
+
+        for layer in nn_structure.iter().enumerate() {
+            if layer.0 == nn_structure.len()-1 {
                 break;
             }
-            prev_error = precise_error;
-            precise_error = 0.;
+            if layer.0 == 0 {
+                initialized_matrices[0] = Array::random((initial_neurons as usize, *layer.1 as usize), Uniform::<f64>::new(&init.0, &init.1)); 
+            }else {
+                initialized_matrices[layer.0] = Array::random((nn_structure[layer.0-1] as usize, *layer.1 as usize), Uniform::<f64>::new(&init.0, &init.1)); 
+            }
+        }
+        Ok(initialized_matrices)
+    }
+
+    fn feed_forward(weights: &[T], initial_input: &T2, window: &[i32], hidden_layers: &mut Vec<T2>) -> (T2, T2) {
+        let mut next_input = initial_input;
+        let last_hidden: T2;
+
+        for (i, layer) in weights[1..weights.len()].iter().enumerate() {
+            if i == weights.len()-1 {
+                last_hidden = *next_input;
+            }else {
+                hidden_layers[i].add_assign(next_input);
+            }
+            next_input = &next_input.dot(layer);
+        }
+        let prediction = softmax(next_input);
+        let ytrue = OneHot(window,  prediction.len() as i32); 
+        let error_ctx = &(prediction - &arr1(&ytrue)); 
+        (((window.len()-1) as f64)*prediction + error_ctx, last_hidden)
+
+    }
+
+    fn standarize_hiddens(layers: &[T2], denominator: f64, nn_structure: &[i32]) -> Vec<T> {
+        // Should I apply Batch Norm only here ?? To the entire arch ?? Simple hidden layers avg ?? 
+        // For now I'll stick with a (perhaps) non-sense hidden layers avg and normalization
+        // hidden layers standarization
+
+        let mean_hiddens  = layers.iter().map(|h_layer| h_layer / denominator);
+       
+        let standarization_avg: Vec<f64> = mean_hiddens.map(|layer| layer.sum() / layer.len() as f64).collect();
+        
+        let standarization_stdev = {
+            let mut temp: Vec<f64> = vec![0.; mean_hiddens.len()];
+            for (idx, layer) in mean_hiddens.enumerate() {
+                temp[idx] = (layer.map(|x| (x-standarization_avg[idx]).powf(2.)).sum() / layer.len() as f64).sqrt();
+            }
+            temp
+        };
+        // standarize all hidden layers' neurons
+        let std_hidden: Vec<T> = {
+            let mut temp: Vec<T>;
+            for i in 0..nn_structure.len()-1 {
+                temp[i] = arr1(vec![0.; nn_structure[i] as usize].as_slice()).into_shape((1, 2)).unwrap();
+            }
+            for (idx, layer) in mean_hiddens.enumerate() {
+                temp[idx] = ((layer - standarization_avg[idx]) / standarization_stdev[idx]).into_shape((1, 2)).unwrap();
+            }
+            temp
+        };
+        std_hidden
+    }
+
+    fn compute_gradients() -> Vec<> {
+        // previous work
+        let grad_input = WOutputs.dot(&batch_error);
+                let s_len = batch_error.len();
+                let sum_error_2d = batch_error.into_shape((s_len, 1)).unwrap();
+
+                
+
+                
+                                
+                let grad_output = sum_error_2d.dot(&std_hidden);
+                let prod = props.lr*grad_input;
+                for i in prev_batch..next_batch {
+                    
+                    let mut ith_row = WInputs.row_mut(i as usize);
+                    {
+                        let ith_row_cp = ith_row.to_owned();
+                        let subt  = ith_row_cp - &prod;
+                        
+                        ith_row.assign(&subt);
+                    }
+                }
+                let out_prod = props.lr*grad_output;
+                WOutputs = WOutputs.sub(&out_prod.t());
+    }
+
+    pub fn train<'a>(props: &SkipGram, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<Vec<T>, String> {
+        
+        // initialize the random input and output weights matrix
+        
+        let split = match props.data {
+            Some(ref v) => Some(v.split_at((v.len() as f32*props.train_split) as usize)),
+            None => {
+                None
+            },
+        };
+        
+
+        let real_length = split.unwrap().0.len() + split.unwrap().1.len();
+
+        let d_len: i32 = split.unwrap().0.len().try_into().expect("Couldn't perform conversion to integer");
+        
+        let mut precise_error = 0.;
+        let mut nn_structure = vec![props.d, real_length as i32];
+        
+        let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32)?;
+        
+        // for a number (preset) of iterations or until error converges to 0
+        
+        let mut epochs = 0;
+        let mut overall_error = vec![0.; 20];
+        let mut test_errors = vec![0.; 20];
+
+        loop { // epochs
+            println!("----------EPOCH {epochs} ------------------");
+            if epochs == 20 {
+                break;
+            }
+            //batches
+            let batches = 10;
+            let batch_capacity = d_len / batches;
+            let mut prev_batch = 0;
+            let mut next_batch = cmp::min(prev_batch+batch_capacity, d_len);
+            
+            while prev_batch < d_len {
+                println!("Starting batch {prev_batch} ");
+                let mut batch_error = arr1(vec![0. as f64; real_length].as_slice());
+
+                let mut hidden_avg: Vec<T2>;
+                for i in 0..nn_structure.len()-1 {
+                    hidden_avg[i] = arr1(vec![0.; nn_structure[i] as usize].as_slice());
+                }
+                for i in prev_batch..next_batch {
+                    
+                    // perform feed-forward
+                    hidden_avg[0].add_assign(&network_weights[0].row(i as usize).to_owned());
+                    let (opt_error, last_hidden) = feed_forward(&network_weights.as_slice(), 
+                        &network_weights[0].row(i as usize).to_owned(),
+                        ctxMap.get(&i).unwrap(),
+                        &mut hidden_avg);
+                    
+                    if  f64::is_nan(opt_error.iter().sum()) {
+                        println!("I am NaN");
+                        println!("sum_error{:?}", &opt_error);
+                        println!("For current word: {i}");
+                        return Ok(network_weights)
+                    }
+                    batch_error.add_assign(&opt_error);
+                    
+                    precise_error += log_probability(&i, ctxMap.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, d_len as usize);
+                    
+                    // perform gradient descent
+                }  
+
+                let std_hiddens = standarize_hiddens(&hidden_avg, (next_batch-prev_batch) as f64, &nn_structure);
+                batch_error = batch_error / (next_batch-prev_batch) as f64;
+                
+                let gradients = compute_gradients(&network_weights, &std_hiddens, &batch_error);
+
+                // final step to gradient step
+                for (g_idx, gradient) in gradients.iter().enumerate() {
+                    network_weights[g_idx] -= props.lr * gradient;
+                }
+
+                
+
+                prev_batch = next_batch+1;
+                next_batch = cmp::min(prev_batch+batch_capacity, d_len);
+                
+                println!("Precise error: {:?}", precise_error);
+                overall_error[epochs] += precise_error;
+                precise_error = 0.;
+            }
+            
+            println!("Right before test");
+            // Perform test
+            let test_range = Range {
+                start: split.unwrap().0.len() as i32,
+                end: (split.unwrap().0.len() + split.unwrap().1.len()) as i32,
+            };
+            test_errors[epochs] = test(&WInputs, &WOutputs, ctxMap, test_range);
+            epochs += 1;
             
             
+            plot(&overall_error, &test_errors);
         }
         Ok((WInputs, WOutputs))
 
@@ -123,7 +235,7 @@ pub mod Softmax{
 
       
 
-    fn OneHot(on: &Vec<i32>, l: i32) -> Vec<f64> {
+    fn OneHot(on: &[i32], l: i32) -> Vec<f64> {
         let mut repr = vec![0.; l as usize];
         let true_selected: Vec<&i32> = on.iter().filter(|ind| *ind >= &0).collect(); // this will be useless when context hashmap is properly designed
         for i in true_selected {
@@ -152,6 +264,16 @@ pub mod Softmax{
         
 
     }   
+
+    pub fn test(w_in: &T, w_out: &T, ctxMap: &HashMap<i32, Vec<i32>>, within: Range<i32>) -> f64 {
+        // For each on the split range
+        let mut global_error = 0.;
+        for i in within {
+            let hidden = w_in.row(i as usize).to_owned();
+            global_error += log_probability(&i, ctxMap, w_out, &hidden, w_out.ncols());
+        }
+        global_error
+    }
 
     
 }

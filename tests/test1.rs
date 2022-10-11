@@ -1,12 +1,6 @@
-
-
-
-
 // I've gotta test: Training time for different datasets and model properties (nº of neurons in hidden layer, dropout, w_size, etc..), Analogical addition, 
 // Performance when applied to some NN, acquaracy (log error)
 // 
-
-
 
 #[cfg(test)]
 mod tests {
@@ -58,8 +52,9 @@ mod tests {
         activation_fn: CustomActivationFunction::Sigmoid,
         dropout: false,
         batches: 20,
+        train_split: 0.85,
         data: None,
-        k: None
+        k: None,
     };
     
     #[test]
@@ -68,9 +63,11 @@ mod tests {
         unsafe {
             let ctxMap = model.preprocess_data("/Users/cinderella/Documents/word-embeddings/tests/word_set.txt", false).unwrap(); // in case its needed
             println!("Hidden layer dimension: {:?}", model.d);
+            println!("context map length: {:?}", ctxMap.len());
+
+            // split train and test data (85, 15)
+
             let trained_weights = model.train(&ctxMap).expect("Smth went wrong");
-        
-        
     
             println!("Trained input weights -> {:}", trained_weights.0);
             println!("Trained output weights  -> {:}", trained_weights.1);
@@ -80,7 +77,7 @@ mod tests {
                 output_weights: trained_weights.1.rows().into_iter().map(|r| r.to_vec()).collect_vec()
             };
             std::fs::write("/Users/cinderella/Documents/word-embeddings/tests/trained_weights.json",
-            serde_json::to_string_pretty(&to_write).unwrap());
+            serde_json::to_string_pretty(&to_write).unwrap()).unwrap();
         }
     
     }

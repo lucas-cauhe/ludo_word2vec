@@ -1,6 +1,6 @@
 extern crate ndarray;
 extern crate serde_json;
-use std::{collections::HashMap, default};
+use std::{collections::HashMap};
 
 use itertools::Itertools;
 use regex::Regex;
@@ -11,18 +11,6 @@ use utils::utils::{build_context};
 use ndarray::{ArrayBase, OwnedRepr, Dim};
 use ProbabilityFunctions::{Softmax};
 type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
-
-
-
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
 //                                                  Remove duplicate words
@@ -61,8 +49,9 @@ pub struct SkipGram {
     pub activation_fn: CustomActivationFunction,
     pub dropout: bool,
     pub batches: i32,
+    pub train_split: f32,
     pub data: Option<Vec<String>>,
-    pub k: Option<i32>, //only for NCE
+    pub k: Option<i32>, //only for NCE,
 }
 
 impl SkipGram {
@@ -93,7 +82,7 @@ impl SkipGram {
         
         match context_map {
             Ok(m) => {
-                self.d = (groomed_content.len() as f32 * 0.85) as i32;
+                self.d = (groomed_content.len() as f32 * 0.75) as i32;
                 self.data = Some(groomed_content);
                 Ok(m)
             },
