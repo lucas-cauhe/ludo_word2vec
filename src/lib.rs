@@ -93,7 +93,7 @@ impl SkipGram {
         // lemmatizing, etc.. (not for now)
     }
 
-    pub fn train(&self, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<(T, T), String> {
+    pub fn train(&self, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<Vec<T>, String> {
         // Here you have to obtain metrics as the model gets trained
         
         match self.prob_function {

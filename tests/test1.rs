@@ -69,12 +69,12 @@ mod tests {
 
             let trained_weights = model.train(&ctxMap).expect("Smth went wrong");
     
-            println!("Trained input weights -> {:}", trained_weights.0);
-            println!("Trained output weights  -> {:}", trained_weights.1);
+            println!("Trained input weights -> {:}", trained_weights[0]);
+            println!("Trained output weights  -> {:}", trained_weights[1]);
         
             let to_write = Writer {
-                input_weights: trained_weights.0.rows().into_iter().map(|r| r.to_vec()).collect_vec(),
-                output_weights: trained_weights.1.rows().into_iter().map(|r| r.to_vec()).collect_vec()
+                input_weights: trained_weights[0].rows().into_iter().map(|r| r.to_vec()).collect_vec(),
+                output_weights: trained_weights[1].rows().into_iter().map(|r| r.to_vec()).collect_vec()
             };
             std::fs::write("/Users/cinderella/Documents/word-embeddings/tests/trained_weights.json",
             serde_json::to_string_pretty(&to_write).unwrap()).unwrap();
