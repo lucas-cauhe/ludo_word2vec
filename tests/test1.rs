@@ -1,10 +1,10 @@
-// I've gotta test: Training time for different datasets and model properties (nº of neurons in hidden layer, dropout, w_size, etc..), Analogical addition, 
+// I've gotta test: Training time for different datasets and MODEL properties (nº of neurons in hidden layer, dropout, w_size, etc..), Analogical addition, 
 // Performance when applied to some NN, acquaracy (log error)
 // 
 
 #[cfg(test)]
 mod tests {
-    use word_embeddings::{CustomActivationFunction, CustomProbFunctionType, SkipGram};
+    use word_embeddings::{CustomActivationFunction, CustomProbFunctionType, SkipGram, HyperParamsTune, HyperParams};
     use ndarray::{ ArrayBase, OwnedRepr, Dim, arr1};
     use serde::{Deserialize, Deserializer, Serialize, de::{self, SeqAccess}};
     use std::marker::PhantomData;
@@ -43,31 +43,43 @@ mod tests {
     }
 
 
-    type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
-    static mut model: SkipGram = SkipGram {
+    
+    static mut MODEL: SkipGram = SkipGram {
         w_size: 3,
         d: 80,
         lr: 0.001,
         prob_function: CustomProbFunctionType::Softmax,
         activation_fn: CustomActivationFunction::Sigmoid,
-        dropout: false,
         batches: 20,
         train_split: 0.85,
         data: None,
         k: None,
     };
+
+
     
     #[test]
     fn a_training() {
 
+        // for some iterations -> copy MODEL and build a new model from HyperParamsTune
+
+        let mut tuner = HyperParamsTune::new().initialize();
+        let mut tuning_params: Vec<HyperParams> = vec![];
+        for i in 0..20 {
+            tuning_params[i] = tuner.new_hyperparams();
+        }
+
         unsafe {
-            let ctxMap = model.preprocess_data("/Users/cinderella/Documents/word-embeddings/tests/word_set.txt", false).unwrap(); // in case its needed
-            println!("Hidden layer dimension: {:?}", model.d);
+            let ctxMap = MODEL.preprocess_data("/Users/cinderella/Documents/word-embeddings/tests/word_set.txt", false).unwrap(); // in case its needed
+            println!("Hidden layer dimension: {:?}", MODEL.d);
             println!("context map length: {:?}", ctxMap.len());
 
-            // split train and test data (85, 15)
+            // Configure hyper parameters
 
-            let trained_weights = model.train(&ctxMap).expect("Smth went wrong");
+
+            
+
+            let trained_weights = MODEL.train(&ctxMap).expect("Smth went wrong");
     
             println!("Trained input weights -> {:}", trained_weights[0]);
             println!("Trained output weights  -> {:}", trained_weights[1]);
@@ -100,7 +112,7 @@ mod tests {
         let w_out = arr1(&out_flatten).into_shape(out_shape).unwrap();
         println!("input_weights: {:?}", w_in);
         println!("output_weights: {:?}", w_out);
-        let _r = unsafe {model.predict(&w_in, &w_out, &model, &inputs).expect("Error while training")};
+        let _r = unsafe {MODEL.predict(&w_in, &w_out, &MODEL, &inputs).expect("Error while training")};
     
     }
 }

@@ -2,6 +2,7 @@
 pub mod Softmax{
     extern crate ndarray;
     extern crate ndarray_rand;
+    
     use std::collections::HashMap;
     extern crate activation_functions;
     use std::ops::{Range};
@@ -10,14 +11,14 @@ pub mod Softmax{
     use crate::SkipGram;
     use crate::utils;
     use utils::utils::*;
-    use ndarray::{Array, arr1, ViewRepr, arr2};
+    use ndarray::{Array, arr1, arr2};
     use ndarray::{ArrayBase, OwnedRepr, Dim};
-    use ndarray_rand::RandomExt;
+    use ndarray_rand::{RandomExt};
     use ndarray_rand::rand_distr::Uniform;
     
     type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
     type T2 = ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>>;
-    type V = ArrayBase<ViewRepr<f64>, Dim<[usize; 2]>>;
+
     enum InitializationMethods {
         Xavier,
         Default
