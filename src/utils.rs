@@ -2,7 +2,7 @@
 
 pub mod utils {
     
-    use itertools::Itertools;
+    
     use plotters::prelude::*;
 
     use std::{collections::HashMap, cmp::{min}};
@@ -15,30 +15,30 @@ pub mod utils {
         let mut context_map = HashMap::<i32, Vec<i32>>::new(); // Key: index in cleaned dataset, Values: context indices
         
         println!("Building context map, this could take some time...");
-        for wInd in 0..c.len() {
-            let checked_sub = match wInd.checked_sub(*w_size as usize) {
+        for w_ind in 0..c.len() {
+            let checked_sub = match w_ind.checked_sub(*w_size as usize) {
                 Some(s) => s,
                 None => 0,
             };
-            let ctxRange = checked_sub..min(c.len(), wInd+(*w_size as usize));
-            let midWordInd = content_array.iter().position(|w| *w==c[wInd]).unwrap() as i32;
-            for ctxInd in ctxRange {
-                if ctxInd == wInd {
+            let ctx_range = checked_sub..min(c.len(), w_ind+(*w_size as usize));
+            let mid_word_ind = content_array.iter().position(|w| *w==c[w_ind]).unwrap() as i32;
+            for ctx_ind in ctx_range {
+                if ctx_ind == w_ind {
                     continue;
                 }
-                let ctxWord = content_array.iter().position(|w| *w==c[ctxInd]).unwrap() as i32;
-                let ctxEntry = context_map.entry(ctxWord).or_insert(Vec::new());
-                ctxEntry.push(midWordInd);
+                let ctx_word = content_array.iter().position(|w| *w==c[ctx_ind]).unwrap() as i32;
+                let ctx_entry = context_map.entry(ctx_word).or_insert(Vec::new());
+                ctx_entry.push(mid_word_ind);
             }
         }
         println!("Context map built successfully");
         Ok(context_map)
     }
     
-    pub fn log_probability(ckey: &i32, window: &[i32], w_output: &T2, hidden: &T1, curr_len: usize) -> f64 {
+    pub fn log_probability(ckey: &i32, w_indow: &[i32], w_output: &T2, hidden: &T1, curr_len: usize) -> f64 {
         let mut brute_cost = 0.;
         
-        for ctxkey in window {
+        for ctxkey in w_indow {
             let prob = prob_function(*ckey as usize, ctxkey, w_output, curr_len, hidden);
             brute_cost += f64::ln(prob);
         }

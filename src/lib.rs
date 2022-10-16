@@ -1,18 +1,17 @@
 extern crate ndarray;
 extern crate serde_json;
 extern crate ndarray_rand;
-use std::{collections::{HashMap}, marker::PhantomData};
-use std::ops::{Range};
+use std::{collections::{HashMap}};
 
 use itertools::Itertools;
 use regex::Regex;
 use ndarray_rand::rand::{self, Rng};
 
-pub mod ProbabilityFunctions;
+pub mod probability_functions;
 pub mod utils;
 use utils::utils::{build_context};
 use ndarray::{ArrayBase, OwnedRepr, Dim};
-use ProbabilityFunctions::{Softmax};
+use probability_functions::{softmax};
 type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
@@ -33,20 +32,21 @@ mod word2vec {
 
 
 /*
-        Hyperparameter tuning -> 1st order: Learning Rate (logarithmic scale), #hidden units, batch-size and momentum term
-                                 2nd order: learning rate decay 
+        Hyperparameter tuning -> 1st order: Learning Rate (logarithmic scale), #hidden units, batch-size and window size
+                                 2nd order: learning rate decay, momentum term
 
         I'm aiming to a caviar-style training so every HyperParams for every individual training process will be stored into a container
         so that when a new HyperParams is launched, it isn't already been chosen
         Every HyperParams feature will be chosen randomly from HyperParamsTune properties.
     */
-
+#[derive(Debug, Default, Clone)]
 pub struct HyperParams {
-    lr: f64,
-    hidden_units: f64, // if more hidden layers were added, this should be a Vec<i32>
-    batch_size: i32,
+    pub lr: f64,
+    pub hidden_units: f64, // if more hidden layers were added, this should be a Vec<i32>
+    pub batch_size: i32,
 }
 
+#[derive(Debug, Default, Clone)]
 pub struct HyperParamsTune {
     lr: Vec<f64>,
     hidden_units: Vec<f64>, // if more hidden layers were added, this should be a Vec<i32>
@@ -56,34 +56,51 @@ pub struct HyperParamsTune {
 
 impl HyperParamsTune {
 
+    ///	_Creates new instance of HyperParamsTune_
+    ///
+    ///	# _Examples_
+    ///
+    /// * ``` let tuner: HyperParamsTune = HyperParamsTune::new();```
+
     pub fn new() -> HyperParamsTune {
-        HyperParamsTune { lr: vec![0.; 20], hidden_units: vec![0.; 20], batch_size: vec![0; 2], in_use: HashMap::new()}
+        Default::default()
     }
-    
-    fn initialize_param(&self, num_rng: Range<f64>) -> Vec<f64> {
-        let mut initial = vec![0.; 20];
-        let mut rng = rand::thread_rng();
-        for x in initial.iter_mut() {
-            *x = 10.0_f64.powf(rng.gen_range(num_rng.clone()));
-        }
-        initial
-    }
+
+    ///	_Configures random values for tuner fields_
+    ///
+    ///	# _Arguments_
+    ///
+    /// * `&self` 
     
     pub fn initialize(&self) -> HyperParamsTune {
         // believing it should be between 0.0001 and 0.01
-        use rand::Rng;
-        let learning_rate = self.initialize_param(-4.0..-2.0);
+        //use rand::Rng;
+        let learning_rate = {
+            let mut initial = vec![0.; 20];
+            let mut rng = rand::thread_rng();
+            for x in initial.iter_mut() {
+                *x = 10.0_f64.powf(rng.gen_range(-4.0..-2.0));
+            }
+            initial
+        };
 
         // # hidden_units could go from 1 to 2 times input size
-        let hidden_units = self.initialize_param(1.0..2.0);
+        let hidden_units = {
+            let mut initial = vec![0.; 20];
+            let mut rng = rand::thread_rng();
+            for x in initial.iter_mut() {
+                *x = rng.gen_range(1.0..2.0);
+            }
+            initial
+        };
         // batch_size could should either be 64 or 128 (or consecutive powers of 2) depending on the training data amount
 
-        let batch_size = vec![64, 128];
+        let batch_size = vec![32, 64, 128];
 
         HyperParamsTune { 
             lr: learning_rate,
-            hidden_units: hidden_units, 
-            batch_size: batch_size,
+            hidden_units, 
+            batch_size,
             in_use: HashMap::<i32, Vec<(f64, f64)>>::new(),
         }
 
@@ -102,6 +119,19 @@ impl HyperParamsTune {
         exists
     }
 
+    ///	_Retrieves random values from tuner_
+    ///
+    ///	# _Arguments_
+    ///
+    /// * `&mut self`
+    /// 
+    /// # _Examples_
+    /// 
+    /// ```
+    /// let tuner = HyperParams::new().initialize();
+    /// let tuning_params = tuner.new_hyperparams(); 
+    /// ```
+
     pub fn new_hyperparams(&mut self) -> HyperParams {
         let mut rng = rand::thread_rng();
         let mut ret_params: HyperParams;
@@ -109,7 +139,7 @@ impl HyperParamsTune {
             ret_params = HyperParams { 
                 lr: *self.lr.get(rng.gen_range(0..20)).unwrap(), 
                 hidden_units: *self.hidden_units.get(rng.gen_range(0..20)).unwrap(), 
-                batch_size: rng.gen_range(0..2),
+                batch_size: self.batch_size[rng.gen_range(0..3)],
             };
 
             if !self.is_used(&ret_params){
@@ -128,7 +158,7 @@ impl HyperParamsTune {
 #[derive(Clone)]
 pub enum CustomProbFunctionType {
     Softmax,
-    HSoftmax,
+    Hsoftmax,
     NCE
 }
 #[derive(Clone)]
@@ -140,6 +170,7 @@ pub enum CustomActivationFunction {
 
 #[derive(Clone)]
 pub struct SkipGram {
+    
     pub w_size: i32, // take a look into positional windows
     pub d: i32,
     pub lr: f64,
@@ -147,16 +178,23 @@ pub struct SkipGram {
     pub activation_fn: CustomActivationFunction,
     pub batches: i32,
     pub train_split: f32,
+    pub epochs: usize,
     pub data: Option<Vec<String>>,
     pub k: Option<i32>, //only for NCE,
 }
 
 impl SkipGram {
     
-    
-    pub fn preprocess_data<T: Into<Option<bool>>>(&mut self, path: &str, for_hs: T) ->  Result<HashMap<i32, Vec<i32>>, String> { 
+    ///	Builds a context map from model data
+    ///
+    ///	# _Arguments_
+    ///
+    /// * `path` - _model data location_
+    /// * `for_hs` - `todo`
+    /// 
+    pub fn preprocess_data<T: Into<Option<bool>>>(&mut self, path: &str, _for_hs: T) ->  Result<HashMap<i32, Vec<i32>>, String> { 
         /* if let Some(_) = for_hs.into() {
-            use HSoftmax::{HuffmanTree};
+            use Hsoftmax::{HuffmanTree};
             let processed_data = HuffmanTree::count_frequency(&d.data);
             processed_data.to_vec(); // Turn the hasmap into a vector containing tuples (<word>, <frequency>)
         } */
@@ -173,7 +211,7 @@ impl SkipGram {
         //println!("{:?}", &content_);
         
         let groomed_content: Vec<String> = content_.to_lowercase().split(' ').unique().map(|w| w.to_string()).filter(|w| w!="").collect();
-        println!("{:?}", &groomed_content);
+        //println!("{:?}", &groomed_content);
         let context_map = build_context(&content_.to_lowercase().split(' ').filter(|w| *w!="").collect(), &self.w_size, &groomed_content);
 
         
@@ -189,12 +227,29 @@ impl SkipGram {
         // lemmatizing, etc.. (not for now)
     }
 
-    pub fn train(&self, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<Vec<T>, String> {
+    ///	_Trains a preprocessed model_
+    /// Returns a vector, float tuple where `Vec<T>` is the trained weights vector.
+    /// `f64` represents the error computed at the end of training process.
+    ///
+    ///	# _Arguments_
+    ///
+    /// * `&self`
+    /// * `ctx_map` - _training data context map_
+    ///
+    /// # _Examples_
+    /// 
+    /// ```
+    /// let ctx_map = model.preprocess_data("path/to/data").unwrap();
+    /// let (trained_weights, overall_error) = model.train(&ctx_map).expect("Error during training: ");
+    /// ```
+
+
+    pub fn train(&self, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<T>, f64), String> {
         // Here you have to obtain metrics as the model gets trained
         
         match self.prob_function {
-            CustomProbFunctionType::Softmax => Ok(Softmax::train(&self, ctxMap)?),
-            CustomProbFunctionType::HSoftmax => Err("Error".to_string()),//HSoftmax::train(self_copy),
+            CustomProbFunctionType::Softmax => Ok(softmax::train(&self, ctx_map)?),
+            CustomProbFunctionType::Hsoftmax => Err("Error".to_string()),//Hsoftmax::train(self_copy),
             CustomProbFunctionType::NCE => Err("Error".to_string())//NCE::train(self_copy),
         }
     }
@@ -203,8 +258,8 @@ impl SkipGram {
         // Here you have to obtain metrics as the model gets trained
         
         match self.prob_function {
-            CustomProbFunctionType::Softmax => Ok(Softmax::predict(w_in, w_out, model, inputs)),
-            CustomProbFunctionType::HSoftmax => Err("Error".to_string()),//HSoftmax::train(self_copy),
+            CustomProbFunctionType::Softmax => Ok(softmax::predict(w_in, w_out, model, inputs)),
+            CustomProbFunctionType::Hsoftmax => Err("Error".to_string()),//Hsoftmax::train(self_copy),
             CustomProbFunctionType::NCE => Err("Error".to_string())//NCE::train(self_copy),
         }
     }

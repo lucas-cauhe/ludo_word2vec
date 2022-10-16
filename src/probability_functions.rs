@@ -1,5 +1,5 @@
 
-pub mod Softmax{
+pub mod softmax{
     extern crate ndarray;
     extern crate ndarray_rand;
     
@@ -21,7 +21,7 @@ pub mod Softmax{
 
     enum InitializationMethods {
         Xavier,
-        Default
+        Standard,
     }
 
     fn initialization_method(method: InitializationMethods, dimensions: &i32) -> (f64, f64) {
@@ -29,7 +29,7 @@ pub mod Softmax{
             InitializationMethods::Xavier => {
                 (-(6./(*dimensions as f64)).sqrt(), (6./(*dimensions as f64)).sqrt())
             },
-            InitializationMethods::Default => {
+            InitializationMethods::Standard => {
                 (-(1./(2.* *dimensions as f64)), 1./(2.**dimensions as f64))
             }
         }
@@ -66,7 +66,7 @@ pub mod Softmax{
             next_input = next_input.dot(&weights[i]);
         }
         let prediction = &softmax(&next_input);
-        let ytrue = OneHot(window,  prediction.len() as i32); 
+        let ytrue = one_hot(window,  prediction.len() as i32); 
         let error_ctx = &(prediction - &arr1(&ytrue)); 
         
         Ok((((window.len()-1) as f64)*prediction + error_ctx, last_hidden))
@@ -116,7 +116,9 @@ pub mod Softmax{
         (grad_input, grad_output)
     }
 
-    pub fn train(props: &SkipGram, ctxMap: &HashMap<i32, Vec<i32>>) -> Result<Vec<T>, String> {
+    /// implements model training for softmax probability function
+
+    pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<T>, f64), String> {
         
         // initialize the random input and output weights matrix
         
@@ -131,24 +133,28 @@ pub mod Softmax{
 
         let d_len: i32 = split.unwrap().0.len().try_into().expect("Couldn't perform conversion to integer");
         
-        let mut precise_error = 0.;
+        
         let nn_structure = vec![props.d, real_length as i32];
         
         
         let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32).expect("Error initializing matrices");
         
         let mut epochs = 0;
-        let mut overall_error = vec![0.; 20];
-        let mut test_errors = vec![0.; 20];
+        let mut overall_error = vec![0.; props.epochs];
+        let mut test_errors = vec![0.; props.epochs];
+
+        println!("Training with model params: {:?}", (props.batches, props.d, props.lr));
 
         loop { // epochs
             println!("----------EPOCH {epochs} ------------------");
-            if epochs == 20 {
+            
+            if epochs == props.epochs {
                 break;
             }
+            let mut precise_error = 0.;
             //batches
-            let batches = 10;
-            let batch_capacity = d_len / batches;
+            
+            let batch_capacity = props.batches;
             let mut prev_batch = 0;
             let mut next_batch = cmp::min(prev_batch+batch_capacity, d_len);
             
@@ -167,17 +173,17 @@ pub mod Softmax{
                     hidden_avg[0] += &first_hidden;
                     let (opt_error, last_hidden) = feed_forward(&network_weights.as_slice(), 
                         &first_hidden,
-                        ctxMap.get(&i).unwrap(),
+                        ctx_map.get(&i).unwrap(),
                         &mut hidden_avg).expect("Error while feed-forward");
                     
                     if  f64::is_nan(opt_error.iter().sum()) {
                         println!("I am NaN");
                         println!("sum_error{:?}", &opt_error);
                         println!("For current word: {i}");
-                        return Ok(network_weights)
+                        return Ok((network_weights, precise_error))
                     }
                     batch_error += &opt_error;
-                    precise_error += log_probability(&i, ctxMap.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, d_len as usize);
+                    precise_error += log_probability(&i, ctx_map.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, d_len as usize);
                     
                     // perform gradient descent
                 }  
@@ -185,11 +191,11 @@ pub mod Softmax{
                 let std_hiddens = standarize_hiddens(&hidden_avg, (next_batch-prev_batch) as f64, &nn_structure);
                 batch_error = batch_error / (next_batch-prev_batch) as f64;
                 
-                let (GInput, GOutput) = compute_gradients(&network_weights, &std_hiddens, &batch_error);
+                let (g_input, g_output) = compute_gradients(&network_weights, &std_hiddens, &batch_error);
 
                 // final step to gradient step
-                network_weights[1] -= &(props.lr * GOutput); // .t() ?? 
-                let input_grad = props.lr * GInput;
+                network_weights[1] -= &(props.lr * g_output); // .t() ?? 
+                let input_grad = props.lr * g_input;
                 for i in prev_batch..next_batch {
                     let mut input_gradient_row = network_weights[0].row_mut(i as usize);
                     input_gradient_row -= &input_grad;
@@ -208,19 +214,19 @@ pub mod Softmax{
                 start: split.unwrap().0.len() as i32,
                 end: (split.unwrap().0.len() + split.unwrap().1.len()) as i32,
             };
-            test_errors[epochs] = test(&network_weights[0], &network_weights[1], ctxMap, test_range);
+            test_errors[epochs] = test(&network_weights[0], &network_weights[1], ctx_map, test_range);
             epochs += 1;
             
             
             plot(&overall_error, &test_errors);
         }
-        Ok(network_weights)
+        Ok((network_weights, overall_error[overall_error.len()-1]))
 
     }
 
       
 
-    fn OneHot(on: &[i32], l: i32) -> Vec<f64> {
+    fn one_hot(on: &[i32], l: i32) -> Vec<f64> {
         let mut repr = vec![0.; l as usize];
         let true_selected: Vec<&i32> = on.iter().filter(|ind| *ind >= &0).collect(); // this will be useless when context hashmap is properly designed
         for i in true_selected {
@@ -229,6 +235,8 @@ pub mod Softmax{
         }
         repr
     }
+
+    /// implements prediction for softmax probability function
 
     pub fn predict(w_in: &T, w_out: &T, model: &SkipGram, inputs: &[&str]){
         let vocab = model.data.as_ref().unwrap();
@@ -250,12 +258,12 @@ pub mod Softmax{
 
     }   
 
-    pub fn test(w_in: &T, w_out: &T, ctxMap: &HashMap<i32, Vec<i32>>, within: Range<i32>) -> f64 {
+    pub fn test(w_in: &T, w_out: &T, ctx_map: &HashMap<i32, Vec<i32>>, within: Range<i32>) -> f64 {
         // For each on the split range
         let mut global_error = 0.;
         for i in within {
             let hidden = w_in.row(i as usize).to_owned();
-            global_error += log_probability(&i, ctxMap.get(&i).unwrap(), w_out, &hidden, w_out.ncols());
+            global_error += log_probability(&i, ctx_map.get(&i).unwrap(), w_out, &hidden, w_out.ncols());
         }
         global_error
     }
@@ -264,7 +272,7 @@ pub mod Softmax{
 }
 
 /* 
-pub mod HSoftmax{
+pub mod Hsoftmax{
     extern crate ndarray;
     extern crate ndarray_rand;
     extern crate activation_functions;
