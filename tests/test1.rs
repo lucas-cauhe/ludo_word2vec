@@ -1,7 +1,3 @@
-// I've gotta test: Training time for different datasets and MODEL properties (nº of neurons in hidden layer, dropout, w_size, etc..), Analogical addition, 
-// Performance when applied to some NN, acquaracy (log error)
-// 
-
 #[cfg(test)]
 mod tests {
     use word_embeddings::{CustomActivationFunction, CustomProbFunctionType, SkipGram, HyperParamsTune, HyperParams};
@@ -10,7 +6,7 @@ mod tests {
     use std::{marker::PhantomData, thread::JoinHandle, sync::{Arc, Mutex}, collections::HashMap};
     use std::{fmt, thread};
     
-    const TRY_OUTS: usize = 4;
+    
 
     #[derive(Deserialize, Serialize)]
     struct Writer {
@@ -44,7 +40,7 @@ mod tests {
     }
 
 
-    
+    const TRY_OUTS: usize = 20;
     static mut MODEL: SkipGram = SkipGram {
         w_size: 3,
         d: 80,
@@ -53,7 +49,7 @@ mod tests {
         activation_fn: CustomActivationFunction::Sigmoid,
         batches: 20,
         train_split: 0.85,
-        epochs: 1,
+        epochs: 10,
         data: None,
         k: None,
     };

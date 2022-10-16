@@ -51,18 +51,15 @@ pub mod softmax{
         Ok(initialized_matrices)
     }
 
-    fn feed_forward(weights: &[T], initial_hidden: &T2, window: &[i32], hidden_layers: &mut Vec<T2>) -> Result<(T2, T2), String> {
+    fn feed_forward(weights: &[T], initial_hidden: &T2, window: &[i32], ) -> Result<(T2, T2), String> {
         let mut next_input = initial_hidden.clone();
         let mut last_hidden: T2 = arr1(&[0.; 2]);
 
         
         for i in 1..weights.len(){
             if i == weights.len()-1 {
-                //last_hidden = Box::new(next_input.clone());
                 last_hidden = next_input.clone();
             }
-            let layer_i = hidden_layers.get(i).unwrap();
-            hidden_layers[i] = layer_i + &next_input;
             next_input = next_input.dot(&weights[i]);
         }
         let prediction = &softmax(&next_input);
@@ -72,7 +69,8 @@ pub mod softmax{
         Ok((((window.len()-1) as f64)*prediction + error_ctx, last_hidden))
     }
 
-    fn standarize_hiddens(layers: &[T2], denominator: f64, nn_structure: &[i32]) -> Vec<T2> {
+    // Not the standard way to go, however it works (somewhat)
+    /* fn standarize_hiddens(layers: &[T2], denominator: f64, nn_structure: &[i32]) -> Vec<T2> {
         // Should I apply Batch Norm only here ?? To the entire arch ?? Simple hidden layers avg ?? 
         // For now I'll stick with a (perhaps) non-sense hidden layers avg and normalization
         // hidden layers standarization
@@ -100,18 +98,18 @@ pub mod softmax{
             temp
         };
         std_hidden
-    }
+    } */
 
-    fn compute_gradients(nn_weights: &[T], hidden_layers: &[T2], batch_error: &T2) -> (T2, T) {
+    fn compute_gradients(nn_weights: &[T], hidden_layer: &T2, batch_error: &T2) -> (T2, T) {
         // Since skipgram model is designed to work with just 1 hidden layer this process is unvectorized
         // However if more hidden layers were to be added (even there's no sense to it) subsequent mathematical operations
         // Should be performed.
         let grad_input = nn_weights[1].dot(batch_error);
 
         let batch_error_cp = batch_error.clone();
-        let hidd_layer_zero = hidden_layers.get(0).unwrap().clone();
+        let hidd_layer_cp = hidden_layer.clone();
         let sum_error_2d = batch_error_cp.into_shape((1, batch_error.len())).unwrap();
-        let grad_output = hidd_layer_zero.into_shape((hidden_layers[0].len(), 1)).unwrap().dot(&sum_error_2d);
+        let grad_output = hidd_layer_cp.into_shape((hidden_layer.len(), 1)).unwrap().dot(&sum_error_2d);
         
         (grad_input, grad_output)
     }
@@ -152,7 +150,6 @@ pub mod softmax{
                 break;
             }
             let mut precise_error = 0.;
-            //batches
             
             let batch_capacity = props.batches;
             let mut prev_batch = 0;
@@ -160,21 +157,18 @@ pub mod softmax{
             
             while prev_batch < d_len {
                 println!("Starting batch {prev_batch} ");
-                let mut batch_error = arr1(vec![0. as f64; real_length].as_slice());
 
-                let mut hidden_avg: Vec<T2> = vec![arr1(vec![0.; 1].as_slice()); nn_structure.len()];
-                for i in 0..nn_structure.len()-1 {
-                    hidden_avg[i] = arr1(vec![0.; nn_structure[i] as usize].as_slice());
-                }
+                let mut input_gradient_mean = arr1(vec![0.; props.d as usize].as_slice());
+                let shape_ind = nn_structure.len()-2;
+                let mut output_gradient_mean: T = ArrayBase::zeros((nn_structure[shape_ind] as usize, nn_structure[shape_ind+1] as usize));
                 for i in prev_batch..next_batch {
                     
                     // perform feed-forward
                     let first_hidden = network_weights[0].row(i as usize).to_owned();
-                    hidden_avg[0] += &first_hidden;
+                    
                     let (opt_error, last_hidden) = feed_forward(&network_weights.as_slice(), 
                         &first_hidden,
-                        ctx_map.get(&i).unwrap(),
-                        &mut hidden_avg).expect("Error while feed-forward");
+                        ctx_map.get(&i).unwrap()).expect("Error while feed-forward");
                     
                     if  f64::is_nan(opt_error.iter().sum()) {
                         println!("I am NaN");
@@ -182,20 +176,20 @@ pub mod softmax{
                         println!("For current word: {i}");
                         return Ok((network_weights, precise_error))
                     }
-                    batch_error += &opt_error;
                     precise_error += log_probability(&i, ctx_map.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, d_len as usize);
                     
-                    // perform gradient descent
+                    let (g_input, g_output) = compute_gradients(&network_weights, &last_hidden, &opt_error);
+                    input_gradient_mean += &g_input;
+                    output_gradient_mean += &g_output;
                 }  
+                // mean of gradients
 
-                let std_hiddens = standarize_hiddens(&hidden_avg, (next_batch-prev_batch) as f64, &nn_structure);
-                batch_error = batch_error / (next_batch-prev_batch) as f64;
-                
-                let (g_input, g_output) = compute_gradients(&network_weights, &std_hiddens, &batch_error);
+                input_gradient_mean = input_gradient_mean / (next_batch-prev_batch) as f64;
+                output_gradient_mean = output_gradient_mean / (next_batch-prev_batch) as f64;
 
                 // final step to gradient step
-                network_weights[1] -= &(props.lr * g_output); // .t() ?? 
-                let input_grad = props.lr * g_input;
+                network_weights[1] -= &(props.lr * output_gradient_mean);
+                let input_grad = props.lr * input_gradient_mean;
                 for i in prev_batch..next_batch {
                     let mut input_gradient_row = network_weights[0].row_mut(i as usize);
                     input_gradient_row -= &input_grad;
