@@ -179,6 +179,7 @@ pub struct SkipGram {
     pub batches: i32,
     pub train_split: f32,
     pub epochs: usize,
+    pub beta: f64,
     pub data: Option<Vec<String>>,
     pub k: Option<i32>, //only for NCE,
 }
