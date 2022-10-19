@@ -158,9 +158,10 @@ pub mod softmax{
             while prev_batch < d_len {
                 println!("Starting batch {prev_batch} ");
 
-                let mut input_gradient_mean = arr1(vec![0.; props.d as usize].as_slice());
+                // exponentially weighted averages
+                let mut input_gradient_average = arr1(vec![0.; props.d as usize].as_slice());
                 let shape_ind = nn_structure.len()-2;
-                let mut output_gradient_mean: T = ArrayBase::zeros((nn_structure[shape_ind] as usize, nn_structure[shape_ind+1] as usize));
+                let mut output_gradient_average: T = ArrayBase::zeros((nn_structure[shape_ind] as usize, nn_structure[shape_ind+1] as usize));
                 for i in prev_batch..next_batch {
                     
                     // perform feed-forward
@@ -179,17 +180,13 @@ pub mod softmax{
                     precise_error += log_probability(&i, ctx_map.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, d_len as usize);
                     
                     let (g_input, g_output) = compute_gradients(&network_weights, &last_hidden, &opt_error);
-                    input_gradient_mean += &g_input;
-                    output_gradient_mean += &g_output;
+                    input_gradient_average = props.beta*input_gradient_average + (1.-props.beta)*&g_input;
+                    output_gradient_average = props.beta*output_gradient_average + (1.-props.beta)*&g_output;
                 }  
-                // mean of gradients
-
-                input_gradient_mean = input_gradient_mean / (next_batch-prev_batch) as f64;
-                output_gradient_mean = output_gradient_mean / (next_batch-prev_batch) as f64;
 
                 // final step to gradient step
-                network_weights[1] -= &(props.lr * output_gradient_mean);
-                let input_grad = props.lr * input_gradient_mean;
+                network_weights[1] -= &(props.lr * output_gradient_average);
+                let input_grad = props.lr * input_gradient_average;
                 for i in prev_batch..next_batch {
                     let mut input_gradient_row = network_weights[0].row_mut(i as usize);
                     input_gradient_row -= &input_grad;
@@ -213,6 +210,18 @@ pub mod softmax{
             
             
             plot(&overall_error, &test_errors);
+            let input_weights = &network_weights[0];
+            let i_vec = vec![input_weights.row(0), 
+            input_weights.row(10), 
+            input_weights.row(50), 
+            input_weights.row(100)];
+            println!("Current input weights sample: {:?}", i_vec);
+            let output_weights = &network_weights[1];
+            let o_vec = vec![output_weights.row(0), 
+            output_weights.row(10), 
+            output_weights.row(50), 
+            output_weights.row(100)];
+            println!("Current input weights sample: {:?}", o_vec);
         }
         Ok((network_weights, overall_error[overall_error.len()-1]))
 
