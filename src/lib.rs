@@ -7,30 +7,20 @@ use itertools::Itertools;
 use regex::Regex;
 use ndarray_rand::rand::{self, Rng};
 
-pub mod probability_functions;
+mod probability_functions;
 pub mod utils;
-use utils::utils::{build_context};
-use ndarray::{ArrayBase, OwnedRepr, Dim};
-use probability_functions::{softmax};
-type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
+use utils::{build_context, ArrT};
+use crate::probability_functions::softmax;
+
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
 //                                                  Remove duplicate words
-
 
 mod word2vec {
     
     // handle type implementations for SkipGram
     
 }
-// This goes in nn.rs file
-// Neural Network which takes as parameters: probability function (softmax, Hierarchical softmax, NCE),
-//                                           window size, 
-//                                           dimension of the hidden layers,
-//                                           dropout (mainly applied to softmax)
-//                                           activation function (ReLU, sigmoid...)
-
-
 /*
         Hyperparameter tuning -> 1st order: Learning Rate (logarithmic scale), #hidden units, batch-size and window size
                                  2nd order: learning rate decay, momentum term
@@ -245,7 +235,7 @@ impl SkipGram {
     /// ```
 
 
-    pub fn train(&self, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<T>, f64), String> {
+    pub fn train(&self, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
         // Here you have to obtain metrics as the model gets trained
         
         match self.prob_function {
@@ -255,7 +245,7 @@ impl SkipGram {
         }
     }
 
-    pub fn predict(&self, w_in: &T, w_out: &T, model: &SkipGram, inputs: &[&str]) -> Result<(), String> {
+    pub fn predict(&self, w_in: &ArrT, w_out: &ArrT, model: &SkipGram, inputs: &[&str]) -> Result<(), String> {
         // Here you have to obtain metrics as the model gets trained
         
         match self.prob_function {

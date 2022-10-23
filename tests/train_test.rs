@@ -61,7 +61,7 @@ mod train_test {
         let mut trained_weights: Vec<T> = Default::default();
         let mut avg_error: f64 = 0.;
         unsafe {
-            let ctx_map = MODEL.preprocess_data("/Users/cinderella/Documents/word-embeddings/tests/word_set.txt", false).unwrap(); // in case its needed
+            let ctx_map = MODEL.preprocess_data("/Users/cinderella/Documents/word-embeddings/data/word_set.txt", false).unwrap(); // in case its needed
             let data = MODEL.data.clone();
             MODEL.d = (HU_MULTIPLIER * data.unwrap().len() as f64) as i32;
             let results = MODEL.train(&ctx_map).expect("Smth went wrong");
@@ -73,7 +73,7 @@ mod train_test {
             input_weights: trained_weights[0].rows().into_iter().map(|r| r.to_vec()).collect(),
             output_weights: trained_weights[1].rows().into_iter().map(|r| r.to_vec()).collect()
         };
-        std::fs::write("/Users/cinderella/Documents/word-embeddings/tests/trained_weights.json",
+        std::fs::write("/Users/cinderella/Documents/word-embeddings/data/trained_weights.json",
         serde_json::to_string_pretty(&to_write).unwrap()).unwrap();
         println!("Resulting overall_error: {avg_error}");
     }
@@ -85,7 +85,7 @@ mod train_test {
     
         
         let to_read = {
-            let text = std::fs::read_to_string("/Users/cinderella/Documents/word-embeddings/tests/trained_weights.json").unwrap();
+            let text = std::fs::read_to_string("/Users/cinderella/Documents/word-embeddings/data/trained_weights.json").unwrap();
             serde_json::from_str::<Writer>(&text).expect("BAAAD")
         };
         let in_shape = (to_read.input_weights.len(), to_read.input_weights[0].len());
