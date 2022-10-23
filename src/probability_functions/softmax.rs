@@ -9,7 +9,13 @@ use std::{vec, cmp};
 
 use crate::SkipGram;
 use crate::utils;
-use utils::*;
+use utils::types::*;
+use utils::funcs::*;
+use utils::initialization::*;
+use utils::cost::*; 
+use utils::plot;
+
+
 use ndarray::{arr1};
 use ndarray::{ArrayBase};
 
@@ -95,7 +101,6 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
     
     
     let nn_structure = vec![props.d, real_length as i32];
-    
     
     let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32).expect("Error initializing matrices");
     

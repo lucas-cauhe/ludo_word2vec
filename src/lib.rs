@@ -7,9 +7,10 @@ use itertools::Itertools;
 use regex::Regex;
 use ndarray_rand::rand::{self, Rng};
 
-mod probability_functions;
-pub mod utils;
-use utils::{build_context, ArrT};
+pub mod probability_functions;
+mod utils;
+use utils::preprocessing::*;
+use utils::types::*;
 use crate::probability_functions::softmax;
 
 
