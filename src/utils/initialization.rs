@@ -1,4 +1,5 @@
 use ndarray::{arr2, Array};
+use ndarray_rand::RandomExt;
 use ndarray_rand::rand_distr::Uniform;
 
 use super::enums::InitializationMethods;

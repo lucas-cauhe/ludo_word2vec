@@ -4,11 +4,12 @@ extern crate ndarray_rand;
 
 use std::collections::HashMap;
 extern crate activation_functions;
-use std::ops::{Range};
+use std::ops::{Range, Mul};
 use std::{vec, cmp};
 
 use crate::SkipGram;
-use crate::utils;
+use crate::utils::{self, show_weights};
+use itertools::Batching;
 use utils::types::*;
 use utils::funcs::*;
 use utils::initialization::*;
@@ -82,6 +83,65 @@ fn compute_gradients(nn_weights: &[ArrT], hidden_layer: &ArrT1, batch_error: &Ar
     (grad_input, grad_output)
 }
 
+fn feed_batch(batch_range: Range<i32>, network_weights: &[ArrT], ctx_map: &HashMap<i32, Vec<i32>>, d_len: &usize, g_avgs: (&mut ArrT1, &mut ArrT), beta: &f64) -> f64 {
+    let mut precise_error = 0.;
+    for i in batch_range {
+                
+        // perform feed-forward
+        let first_hidden = network_weights[0].row(i as usize).to_owned();
+        
+        let (opt_error, last_hidden) = feed_forward(&network_weights, 
+            &first_hidden,
+            ctx_map.get(&i).unwrap()).expect("Error while feed-forward");
+        
+        precise_error += log_probability(&i, ctx_map.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, *d_len);
+        
+        let (g_input, g_output) = compute_gradients(&network_weights, &last_hidden, &opt_error);
+        *g_avgs.0 = g_avgs.0.clone().mul(*beta) + (1.-beta)*&g_input;
+        *g_avgs.1 = g_avgs.1.clone().mul(*beta) + (1.-beta)*&g_output;
+    }
+    precise_error
+}
+
+fn update_weigths(batch_range: Range<i32>, network_weights: &mut [ArrT], g_avgs: (&ArrT1, &ArrT), lr: &f64){
+    network_weights[1] -= &(g_avgs.1.clone().mul(*lr));
+    let input_grad = g_avgs.0.clone().mul(*lr);
+    for i in batch_range {
+        let mut input_gradient_row = network_weights[0].row_mut(i as usize);
+        input_gradient_row -= &input_grad;
+    }
+}
+
+fn update_batch(props: &SkipGram, d_len: i32, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
+    let mut batch_error = 0.;
+    let mut prev_batch = 0;
+    let mut next_batch = cmp::min(prev_batch+props.batches, d_len);
+
+    while prev_batch < d_len {
+        println!("Starting batch {prev_batch} ");
+
+        // exponentially weighted averages
+        let mut input_gradient_average = arr1(vec![0.; props.d as usize].as_slice());
+        let shape_ind = nn_structure.len()-2;
+        let mut output_gradient_average: ArrT = ArrayBase::zeros((nn_structure[shape_ind] as usize, nn_structure[shape_ind+1] as usize));
+        
+        // compute gradients from batch
+        // check if network_weights can be modified even if feed_batch declares it as non mutable
+        // if so, clone network_weights
+        let precise_error = feed_batch(prev_batch..next_batch, network_weights, ctx_map, &(d_len as usize), (&mut input_gradient_average, &mut output_gradient_average), &props.beta);
+
+        // update weights
+        update_weigths(prev_batch..next_batch, network_weights, (&input_gradient_average, &output_gradient_average), &props.lr);
+        
+        prev_batch = next_batch+1;
+        next_batch = cmp::min(prev_batch+props.batches, d_len);
+        
+        println!("Precise error: {:?}", precise_error);
+        batch_error += precise_error;
+    }
+    batch_error
+}
+
 /// implements model training for softmax probability function
 
 pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
@@ -94,7 +154,7 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
             None
         },
     };
-
+    let check_weights = false;
     let real_length = split.unwrap().0.len() + split.unwrap().1.len();
 
     let d_len: i32 = split.unwrap().0.len().try_into().expect("Couldn't perform conversion to integer");
@@ -116,57 +176,10 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
         if epochs == props.epochs {
             break;
         }
-        let mut precise_error = 0.;
-        
-        let batch_capacity = props.batches;
-        let mut prev_batch = 0;
-        let mut next_batch = cmp::min(prev_batch+batch_capacity, d_len);
-        
-        while prev_batch < d_len {
-            println!("Starting batch {prev_batch} ");
 
-            // exponentially weighted averages
-            let mut input_gradient_average = arr1(vec![0.; props.d as usize].as_slice());
-            let shape_ind = nn_structure.len()-2;
-            let mut output_gradient_average: ArrT = ArrayBase::zeros((nn_structure[shape_ind] as usize, nn_structure[shape_ind+1] as usize));
-            for i in prev_batch..next_batch {
-                
-                // perform feed-forward
-                let first_hidden = network_weights[0].row(i as usize).to_owned();
-                
-                let (opt_error, last_hidden) = feed_forward(&network_weights.as_slice(), 
-                    &first_hidden,
-                    ctx_map.get(&i).unwrap()).expect("Error while feed-forward");
-                
-                if  f64::is_nan(opt_error.iter().sum()) {
-                    println!("I am NaN");
-                    println!("sum_error{:?}", &opt_error);
-                    println!("For current word: {i}");
-                    return Ok((network_weights, precise_error))
-                }
-                precise_error += log_probability(&i, ctx_map.get(&i).unwrap(), &network_weights[network_weights.len()-1], &last_hidden, d_len as usize);
-                
-                let (g_input, g_output) = compute_gradients(&network_weights, &last_hidden, &opt_error);
-                input_gradient_average = props.beta*input_gradient_average + (1.-props.beta)*&g_input;
-                output_gradient_average = props.beta*output_gradient_average + (1.-props.beta)*&g_output;
-            }  
+        let batch_error = update_batch(props, d_len, &nn_structure, &mut network_weights, ctx_map);
+        overall_error[epochs] += batch_error;
 
-            // final step to gradient step
-            network_weights[1] -= &(props.lr * output_gradient_average);
-            let input_grad = props.lr * input_gradient_average;
-            for i in prev_batch..next_batch {
-                let mut input_gradient_row = network_weights[0].row_mut(i as usize);
-                input_gradient_row -= &input_grad;
-            }
-            
-
-            prev_batch = next_batch+1;
-            next_batch = cmp::min(prev_batch+batch_capacity, d_len);
-            
-            println!("Precise error: {:?}", precise_error);
-            overall_error[epochs] += precise_error;
-            precise_error = 0.;
-        }
         // Perform test
         let test_range = Range {
             start: split.unwrap().0.len() as i32,
@@ -177,18 +190,9 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
         
         
         plot(&overall_error, &test_errors);
-        let input_weights = &network_weights[0];
-        let i_vec = vec![input_weights.row(0), 
-        input_weights.row(10), 
-        input_weights.row(50), 
-        input_weights.row(100)];
-        println!("Current input weights sample: {:?}", i_vec);
-        let output_weights = &network_weights[1];
-        let o_vec = vec![output_weights.row(0), 
-        output_weights.row(10), 
-        output_weights.row(50), 
-        output_weights.row(100)];
-        println!("Current input weights sample: {:?}", o_vec);
+        if check_weights {
+            show_weights(&network_weights);
+        }
     }
     Ok((network_weights, overall_error[overall_error.len()-1]))
 
@@ -224,5 +228,3 @@ pub fn test(w_in: &ArrT, w_out: &ArrT, ctx_map: &HashMap<i32, Vec<i32>>, within:
     }
     global_error
 }
-
-

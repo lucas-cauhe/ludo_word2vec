@@ -1,4 +1,4 @@
-
+/* 
 extern crate ndarray;
 extern crate ndarray_rand;
 
@@ -76,4 +76,4 @@ pub fn train(data: &SkipGram) { // check if referenced object keeps referenced o
 
 fn PNoise() {
 
-}
+} */

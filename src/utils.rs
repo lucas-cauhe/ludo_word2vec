@@ -31,3 +31,20 @@ pub fn plot(train_errs: &[f64], test_errs: &[f64]) {
         LineSeries::new((0..).zip(test_errs.iter()).map(|(idx, y)| {(idx, -y)}),&RED)
     ).unwrap();
 }
+
+use self::types::ArrT;
+
+pub fn show_weights(network_weights: &[ArrT]){
+    let input_weights = &network_weights[0];
+    let i_vec = vec![input_weights.row(0), 
+    input_weights.row(10), 
+    input_weights.row(50), 
+    input_weights.row(100)];
+    println!("Current input weights sample: {:?}", i_vec);
+    let output_weights = &network_weights[1];
+    let o_vec = vec![output_weights.row(0), 
+    output_weights.row(10), 
+    output_weights.row(50), 
+    output_weights.row(100)];
+    println!("Current input weights sample: {:?}", o_vec);
+}
