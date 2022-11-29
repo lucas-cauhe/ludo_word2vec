@@ -9,7 +9,6 @@ use std::{vec, cmp};
 
 use crate::SkipGram;
 use crate::utils::{self, show_weights};
-use itertools::Batching;
 use utils::types::*;
 use utils::funcs::*;
 use utils::initialization::*;
@@ -19,6 +18,7 @@ use utils::plot;
 
 use ndarray::{arr1};
 use ndarray::{ArrayBase};
+
 
 fn feed_forward(weights: &[ArrT], initial_hidden: &ArrT1, window: &[i32], ) -> Result<(ArrT1, ArrT1), String> {
     let mut next_input = initial_hidden.clone();
@@ -112,7 +112,7 @@ fn update_weigths(batch_range: Range<i32>, network_weights: &mut [ArrT], g_avgs:
     }
 }
 
-fn update_batch(props: &SkipGram, d_len: i32, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
+fn update_batches(props: &SkipGram, d_len: i32, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
     let mut batch_error = 0.;
     let mut prev_batch = 0;
     let mut next_batch = cmp::min(prev_batch+props.batches, d_len);
@@ -142,33 +142,13 @@ fn update_batch(props: &SkipGram, d_len: i32, nn_structure: &[i32], network_weig
     batch_error
 }
 
-/// implements model training for softmax probability function
+fn epochs_update(props: &SkipGram, split: &Option<(&[String], &[String])>, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
 
-pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
-    
-    // initialize the random input and output weights matrix
-    
-    let split = match props.data {
-        Some(ref v) => Some(v.split_at((v.len() as f32*props.train_split) as usize)),
-        None => {
-            None
-        },
-    };
-    let check_weights = false;
-    let real_length = split.unwrap().0.len() + split.unwrap().1.len();
-
-    let d_len: i32 = split.unwrap().0.len().try_into().expect("Couldn't perform conversion to integer");
-    
-    
-    let nn_structure = vec![props.d, real_length as i32];
-    
-    let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32).expect("Error initializing matrices");
-    
     let mut epochs = 0;
     let mut overall_error = vec![0.; props.epochs];
     let mut test_errors = vec![0.; props.epochs];
-
-    println!("Training with model params: {:?}", (props.batches, props.d, props.lr));
+    let d_len = split.unwrap().0.len() as i32;
+    let check_weights = false;
 
     loop { // epochs
         println!("----------EPOCH {epochs} ------------------");
@@ -177,12 +157,12 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
             break;
         }
 
-        let batch_error = update_batch(props, d_len, &nn_structure, &mut network_weights, ctx_map);
-        overall_error[epochs] += batch_error;
+        let batches_error = update_batches(props, d_len, &nn_structure, network_weights, ctx_map);
+        overall_error[epochs] += batches_error;
 
         // Perform test
         let test_range = Range {
-            start: split.unwrap().0.len() as i32,
+            start: d_len,
             end: (split.unwrap().0.len() + split.unwrap().1.len()) as i32,
         };
         test_errors[epochs] = test(&network_weights[0], &network_weights[1], ctx_map, test_range);
@@ -194,8 +174,29 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
             show_weights(&network_weights);
         }
     }
-    Ok((network_weights, overall_error[overall_error.len()-1]))
+    overall_error[overall_error.len()-1]
+}
 
+/// implements model training for softmax probability function
+
+pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
+    
+    // initialize the random input and output weights matrix
+    let split = match props.data {
+        Some(ref v) => Some(v.split_at((v.len() as f32*props.train_split) as usize)),
+        None => {
+            None
+        },
+    };
+    
+    let real_length = split.unwrap().0.len() + split.unwrap().1.len();
+    let nn_structure = vec![props.d, real_length as i32];
+    let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32).expect("Error initializing matrices");
+    
+    println!("Training with model params: {:?}", (props.batches, props.d, props.lr));
+
+    let training_error = epochs_update(props, &split, &nn_structure, &mut network_weights, ctx_map);
+    Ok((network_weights, training_error))
 }
 
 /// implements prediction for softmax probability function

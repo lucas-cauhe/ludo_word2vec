@@ -4,6 +4,7 @@ extern crate ndarray_rand;
 use std::{collections::{HashMap}};
 
 use itertools::Itertools;
+use probability_functions::{hsoftmax, nce};
 use regex::Regex;
 use ndarray_rand::rand::{self, Rng};
 
@@ -12,7 +13,6 @@ mod utils;
 use utils::preprocessing::*;
 use utils::types::*;
 use crate::probability_functions::softmax;
-
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
 //                                                  Remove duplicate words
@@ -176,6 +176,7 @@ pub struct SkipGram {
 }
 
 impl SkipGram {
+    
     
     ///	Builds a context map from model data
     ///
