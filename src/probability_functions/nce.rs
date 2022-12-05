@@ -10,9 +10,6 @@ use crate::utils::funcs::{unigram_dist, select_k_neg, normalize, sigmoid, nce_lo
 use crate::utils::initialization::initialize_weight_matrices;
 use crate::utils::types::{ArrT, ArrT1};
 
-type WMatrix = Vec<Vec<i32>>;
-type HiddenLayer = Vec<i32>;
-
 pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String>{ // check if referenced object keeps referenced object-values (and nested values)
     
     // initialize the random input and output weights matrix
@@ -34,7 +31,6 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
     let mut test_errors = vec![0.; props.epochs];
     let d_len = split.unwrap().0.len() as i32;
     let check_weights = false;
-
     // define noise function
     let n_dist = noise(props.data.as_ref().unwrap());
 
@@ -62,10 +58,9 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
                 let gradients = nce_compute_gradients(&ctx_err, &opt_matrix, &hidden);
                 update_weights(&mut network_weights, &gradients, &props.lr, &k_neg, &(word as usize))?;
 
-                // disensemble operating matrix assigning results to original rows
-
             }
         }
+        println!("Error computed in epoch {epoch}: {:?}", overall_error);
     }
     Ok((network_weights, overall_error[props.epochs-1]))
 

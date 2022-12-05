@@ -1,6 +1,6 @@
 use std::vec;
 use ndarray::{Array, Dim, arr1, Axis};
-use rand::seq::SliceRandom;
+use rand::Rng;
 
 use super::types::{ArrT, ArrT1};
 
@@ -31,37 +31,50 @@ pub fn one_hot(on: &[i32], l: i32) -> Vec<f64> {
 // NCE W2V
 
 pub fn unigram_dist(count_data: &[String]) -> Vec<i32>{
-    let count_data_iter = count_data.clone().into_iter();
     let mut w_freq = vec![0; count_data.len()];
-    for (ind, word) in count_data_iter.enumerate() {
-        w_freq[ind] = count_data_iter.filter(|w| *w==word).count() as i32;
+    for (ind, word) in count_data.iter().enumerate() {
+        w_freq[ind] = count_data.iter().filter(|w| *w==word).count() as i32;
     }
     w_freq
 }
 
 pub fn normalize(u_dist: &[i32]) -> Vec<f32> {
-    let u_dist_iter = u_dist.clone().into_iter();
+    // let u_dist_iter = u_dist.clone().into_iter();
     
-    let dist_max = *u_dist_iter.max().unwrap() as f32;
-    let dist_min = *u_dist_iter.min().unwrap() as f32;
-    u_dist_iter.map(|val| (*val as f32 -dist_min)/(dist_max-dist_min)).collect()
+    let dist_max = *u_dist.iter().max().unwrap() as f32;
+    let dist_min = *u_dist.iter().min().unwrap() as f32;
+    u_dist.iter().map(|val| ((*val as f32 -dist_min)/(dist_max-dist_min)).powf(0.75)).collect()
 }
 
 pub fn select_k_neg(n_dist: &[f32], mid_wrd_ctx: &[i32], k: &usize) -> Vec<i32> {
-    let mut buf: Vec<i32> = vec![0; *k];
-    for (rnd, slot) in n_dist.choose_multiple(&mut rand::thread_rng(), *k).zip(buf.iter_mut()) {
-        
-        *slot = n_dist.iter().position(|v| v==rnd).unwrap() as i32;
-        while buf.iter().filter(|ind| *ind==slot).count() > 1 || mid_wrd_ctx.contains(slot) {
-            let rnd_ = n_dist.choose(&mut rand::thread_rng()).unwrap();
-            *slot = n_dist.iter().position(|v| v==rnd_).unwrap() as i32;
-        }
+    // generar tabla lo suficientemente grande para que quepan todos los elementos originales n_dist[i]*tam_tabla
+    // los mas frecuentes apareceran mas veces
+    let max_table_size = 100_000;
+    let mut table: Vec<i32> = vec![0; max_table_size];
+    for (idx, prob) in n_dist.iter().enumerate() {
+        let tmp_v_size = (*prob*max_table_size as f32) as usize;
+        let mut tmp = vec![idx as i32; tmp_v_size];
+        table.append(&mut tmp);
     }
-    buf
+    let mut selected = vec![0; *k];
+    // generar numero aleatorio entre 0 y tam_tabla y seleccionar el elemento i-ésimo que representa
+    // el indice de la palabra que se ha elegido
+    let mut check_ind: usize = 0;
+    while check_ind < *k {
+        loop {
+            let chosen = rand::thread_rng().gen_range(0..max_table_size);
+            if !selected.contains(&table[chosen]) && !mid_wrd_ctx.contains(&table[chosen]) {
+                selected[check_ind] = table[chosen];
+                break;
+            }
+        }
+        check_ind += 1;
+    }
+    selected
 }
 
 pub fn sigmoid(orig: &mut ArrT1){
-    orig.map(|pred| *pred = 1. / (1. + (1. / pred.exp() ) ));
+    orig.map_mut(|pred| *pred = 1. / (1. + (1. / pred.exp() ) ));
 }
 
 pub fn nce_log_probability(hidden: &ArrT1, opt_matrix: &ArrT) -> f64{

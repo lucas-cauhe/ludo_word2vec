@@ -46,7 +46,7 @@ mod train_test {
         w_size: 3,
         d: 80,
         lr: 0.005146257850989499,
-        prob_function: CustomProbFunctionType::Softmax,
+        prob_function: CustomProbFunctionType::NCE,
         activation_fn: CustomActivationFunction::Sigmoid,
         batches: 32,
         train_split: 0.85,

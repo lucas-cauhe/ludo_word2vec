@@ -4,7 +4,7 @@ extern crate ndarray_rand;
 use std::{collections::{HashMap}};
 
 use itertools::Itertools;
-use probability_functions::{hsoftmax, nce};
+use probability_functions::{softmax, nce};
 use regex::Regex;
 use ndarray_rand::rand::{self, Rng};
 
@@ -12,7 +12,6 @@ pub mod probability_functions;
 mod utils;
 use utils::preprocessing::*;
 use utils::types::*;
-use crate::probability_functions::softmax;
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
 //                                                  Remove duplicate words
@@ -243,7 +242,7 @@ impl SkipGram {
         match self.prob_function {
             CustomProbFunctionType::Softmax => Ok(softmax::train(&self, ctx_map)?),
             CustomProbFunctionType::Hsoftmax => Err("Error".to_string()),//Hsoftmax::train(self_copy),
-            CustomProbFunctionType::NCE => Err("Error".to_string())//NCE::train(self_copy),
+            CustomProbFunctionType::NCE => Ok(nce::train(&self, ctx_map)?)//NCE::train(self_copy),
         }
     }
 
