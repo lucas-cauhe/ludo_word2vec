@@ -1,5 +1,6 @@
 use std::{collections::HashMap, cmp::min};
 
+
 pub fn build_context(c: &Vec<&str>, w_size: &i32, content_array: &Vec<String>) -> Result<HashMap<i32, Vec<i32>>, String> {
     let mut context_map = HashMap::<i32, Vec<i32>>::new(); // Key: index in cleaned dataset, Values: context indices
     
@@ -17,7 +18,9 @@ pub fn build_context(c: &Vec<&str>, w_size: &i32, content_array: &Vec<String>) -
             }
             let ctx_word = content_array.iter().position(|w| *w==c[ctx_ind]).unwrap() as i32;
             let ctx_entry = context_map.entry(ctx_word).or_insert(Vec::new());
-            ctx_entry.push(mid_word_ind);
+            if !ctx_entry.contains(&mid_word_ind) {
+                ctx_entry.push(mid_word_ind);
+            }
         }
     }
     println!("Context map built successfully");

@@ -1,6 +1,8 @@
+use core::panic;
 use std::vec;
+use itertools::Itertools;
 use ndarray::{Array, Dim, arr1, Axis};
-use rand::Rng;
+use rand::{Rng, seq::SliceRandom};
 
 use super::types::{ArrT, ArrT1};
 
@@ -30,45 +32,55 @@ pub fn one_hot(on: &[i32], l: i32) -> Vec<f64> {
 
 // NCE W2V
 
-pub fn unigram_dist(count_data: &[String]) -> Vec<i32>{
-    let mut w_freq = vec![0; count_data.len()];
-    for (ind, word) in count_data.iter().enumerate() {
+pub fn noise(count_data: &[String], groomed_data: &[String]) -> Vec<f32> {
+    let w_dist = unigram_dist(count_data, groomed_data);
+    let alpha = 3./4.;
+    let norm_wdist = normalize(&w_dist);
+    println!("Normalized dist: {:?}", norm_wdist.iter().sum::<f32>());
+    norm_wdist.iter().map(|w| f32::powf(*w as f32, alpha)).collect()
+} 
+
+pub fn unigram_dist(count_data: &[String], groomed_data: &[String]) -> Vec<i32>{
+    let mut w_freq = vec![0; groomed_data.len()];
+    for (ind, word) in groomed_data.iter().enumerate() {
         w_freq[ind] = count_data.iter().filter(|w| *w==word).count() as i32;
     }
     w_freq
 }
 
 pub fn normalize(u_dist: &[i32]) -> Vec<f32> {
-    // let u_dist_iter = u_dist.clone().into_iter();
-    
-    let dist_max = *u_dist.iter().max().unwrap() as f32;
-    let dist_min = *u_dist.iter().min().unwrap() as f32;
-    u_dist.iter().map(|val| ((*val as f32 -dist_min)/(dist_max-dist_min)).powf(0.75)).collect()
+    let total = u_dist.iter().sum::<i32>();
+    u_dist.iter().map(|val| *val as f32/(total as f32)).collect()
 }
 
 pub fn select_k_neg(n_dist: &[f32], mid_wrd_ctx: &[i32], k: &usize) -> Vec<i32> {
     // generar tabla lo suficientemente grande para que quepan todos los elementos originales n_dist[i]*tam_tabla
     // los mas frecuentes apareceran mas veces
     let max_table_size = 100_000;
-    let mut table: Vec<i32> = vec![0; max_table_size];
+    let scale_factor = n_dist.iter().sum::<f32>();
+    let mut table: Vec<i32> = vec![0];
     for (idx, prob) in n_dist.iter().enumerate() {
-        let tmp_v_size = (*prob*max_table_size as f32) as usize;
+        let tmp_v_size = ((*prob/scale_factor)*max_table_size as f32) as usize;
+        if table.len()+tmp_v_size > max_table_size {
+            panic!("max_table_size reached");
+        }
         let mut tmp = vec![idx as i32; tmp_v_size];
         table.append(&mut tmp);
     }
-    let mut selected = vec![0; *k];
+    let selected= table.choose_multiple_weighted(&mut rand::thread_rng(), *k, |item| *item).unwrap()
+            .map(|x| x.to_owned())
+            .collect::<Vec<_>>();
+    
     // generar numero aleatorio entre 0 y tam_tabla y seleccionar el elemento i-ésimo que representa
     // el indice de la palabra que se ha elegido
-    let mut check_ind: usize = 0;
-    while check_ind < *k {
-        loop {
-            let chosen = rand::thread_rng().gen_range(0..max_table_size);
-            if !selected.contains(&table[chosen]) && !mid_wrd_ctx.contains(&table[chosen]) {
-                selected[check_ind] = table[chosen];
-                break;
-            }
+
+    // clone the array so that it isn't moved out by implicit into_iter() and can be used later.
+    
+    for selection in &mut selected.clone() {
+        while selected.iter().filter(|x| **x==*selection).count() > 1 || mid_wrd_ctx.contains(selection) {
+            let ind_selection = rand::thread_rng().gen_range(0..table.len());
+            *selection = table[ind_selection];
         }
-        check_ind += 1;
     }
     selected
 }

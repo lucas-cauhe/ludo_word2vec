@@ -41,7 +41,7 @@ mod train_test {
 
 
     
-    const HU_MULTIPLIER: f64 =  1.379289341667417;
+    const HU_MULTIPLIER: f64 =  1.379289341667417; // obtained empiricaly
     static mut MODEL: SkipGram = SkipGram {
         w_size: 3,
         d: 80,
@@ -50,10 +50,11 @@ mod train_test {
         activation_fn: CustomActivationFunction::Sigmoid,
         batches: 32,
         train_split: 0.85,
-        epochs: 20,
+        epochs: 5,
         data: None,
         k: None,
         beta: 0.9,
+        noise_dist: None
     };
     
     #[test]

@@ -12,6 +12,7 @@ pub mod probability_functions;
 mod utils;
 use utils::preprocessing::*;
 use utils::types::*;
+use utils::funcs::noise;
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
 //                                                  Remove duplicate words
@@ -157,7 +158,9 @@ pub enum CustomActivationFunction {
     Sigmoid,
     Tanh
 }
-
+// This struct should be independent to the unique fields for each probability function
+// Skipgram should be the struct that held a Trait implemented by a probability function
+// so unique fields would stay within the traits independent to each other
 #[derive(Clone)]
 pub struct SkipGram {
     
@@ -172,6 +175,7 @@ pub struct SkipGram {
     pub beta: f64,
     pub data: Option<Vec<String>>,
     pub k: Option<i32>, //only for NCE,
+    pub noise_dist: Option<Vec<f32>>
 }
 
 impl SkipGram {
@@ -206,6 +210,11 @@ impl SkipGram {
         //println!("{:?}", &groomed_content);
         let context_map = build_context(&content_.to_lowercase().split(' ').filter(|w| *w!="").collect(), &self.w_size, &groomed_content);
 
+        println!("If NCE selected, noise distribution is being computed now");
+        self.noise_dist = match self.prob_function {
+            CustomProbFunctionType::NCE => Some(noise(content_.to_lowercase().split(' ').map(|s| s.to_owned()).collect_vec().as_slice(), &groomed_content)),
+            _ => None
+        } ;
         
         match context_map {
             Ok(m) => {
