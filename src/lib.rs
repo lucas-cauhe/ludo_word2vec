@@ -1,18 +1,14 @@
 extern crate ndarray;
 extern crate serde_json;
 extern crate ndarray_rand;
-use std::{collections::{HashMap}};
+use std::{collections::{HashMap},cell::{Cell, RefCell}};
 
-use itertools::Itertools;
-use probability_functions::{softmax, nce};
-use regex::Regex;
+use probability_functions::implementors::basics::ProbFunction;
 use ndarray_rand::rand::{self, Rng};
 
 pub mod probability_functions;
 mod utils;
-use utils::preprocessing::*;
 use utils::types::*;
-use utils::funcs::noise;
 
 // Before calling the NN you must have handled:     Whether to lemmatize and stem your vocab (besides removing punctuation)
 //                                                  Remove duplicate words
@@ -144,38 +140,10 @@ impl HyperParamsTune {
 
 }
 
-
-
-#[derive(Clone)]
-pub enum CustomProbFunctionType {
-    Softmax,
-    Hsoftmax,
-    NCE
-}
-#[derive(Clone)]
-pub enum CustomActivationFunction {
-    ReLU,
-    Sigmoid,
-    Tanh
-}
-// This struct should be independent to the unique fields for each probability function
-// Skipgram should be the struct that held a Trait implemented by a probability function
-// so unique fields would stay within the traits independent to each other
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct SkipGram {
-    
-    pub w_size: i32, // take a look into positional windows
-    pub d: i32,
-    pub lr: f64,
-    pub prob_function: CustomProbFunctionType,
-    pub activation_fn: CustomActivationFunction,
-    pub batches: i32,
-    pub train_split: f32,
-    pub epochs: usize,
-    pub beta: f64,
-    pub data: Option<Vec<String>>,
-    pub k: Option<i32>, //only for NCE,
-    pub noise_dist: Option<Vec<f32>>
+    pub prob_function: Box<dyn ProbFunction>,
+    pub data: Cell<Option<Vec<String>>>
 }
 
 impl SkipGram {
@@ -188,43 +156,16 @@ impl SkipGram {
     /// * `path` - _model data location_
     /// * `for_hs` - `todo`
     /// 
-    pub fn preprocess_data<T: Into<Option<bool>>>(&mut self, path: &str, _for_hs: T) ->  Result<HashMap<i32, Vec<i32>>, String> { 
+    pub fn preprocess_data(&mut self, path: &str) ->  Result<HashMap<i32, Vec<i32>>, String> { 
         /* if let Some(_) = for_hs.into() {
             use Hsoftmax::{HuffmanTree};
             let processed_data = HuffmanTree::count_frequency(&d.data);
             processed_data.to_vec(); // Turn the hasmap into a vector containing tuples (<word>, <frequency>)
         } */
-        // list all words, deleting duplicates and punctuation
-        use std::fs;
-        
-        let content = fs::read_to_string(path).unwrap();
-        let content = format!(r"{}", content);
-        //println!("{:?}", &content);
-        let re = Regex::new(r"[[:punct:]\n]").unwrap();
-        let content_ = re.replace_all(&content, " ");
-        
-        
-        //println!("{:?}", &content_);
-        
-        let groomed_content: Vec<String> = content_.to_lowercase().split(' ').unique().map(|w| w.to_string()).filter(|w| w!="").collect();
-        //println!("{:?}", &groomed_content);
-        let context_map = build_context(&content_.to_lowercase().split(' ').filter(|w| *w!="").collect(), &self.w_size, &groomed_content);
-
-        println!("If NCE selected, noise distribution is being computed now");
-        self.noise_dist = match self.prob_function {
-            CustomProbFunctionType::NCE => Some(noise(content_.to_lowercase().split(' ').map(|s| s.to_owned()).collect_vec().as_slice(), &groomed_content)),
-            _ => None
-        } ;
-        
-        match context_map {
-            Ok(m) => {
-                self.data = Some(groomed_content);
-                Ok(m)
-            },
-            Err(_) => Err("Context map couldn't be built successfully".to_string())
-        }
-        
-        
+        let mut buffer: Vec<String> = vec![];
+        let ctx_map = self.prob_function.preprocess_data(path, &mut buffer)?;
+        self.data.set(Some(buffer));
+        Ok(ctx_map)
         // lemmatizing, etc.. (not for now)
     }
 
@@ -245,23 +186,26 @@ impl SkipGram {
     /// ```
 
 
-    pub fn train(&self, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
+    pub fn train(&mut self, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
         // Here you have to obtain metrics as the model gets trained
         
-        match self.prob_function {
+        /* match self.prob_function {
             CustomProbFunctionType::Softmax => Ok(softmax::train(&self, ctx_map)?),
             CustomProbFunctionType::Hsoftmax => Err("Error".to_string()),//Hsoftmax::train(self_copy),
             CustomProbFunctionType::NCE => Ok(nce::train(&self, ctx_map)?)//NCE::train(self_copy),
-        }
+        } */
+
+        self.prob_function.train(ctx_map)
+
     }
 
-    pub fn predict(&self, w_in: &ArrT, w_out: &ArrT, model: &SkipGram, inputs: &[&str]) -> Result<(), String> {
+    /* pub fn predict(&self, w_in: &ArrT, w_out: &ArrT, model: &SkipGram, inputs: &[&str]) -> Result<(), String> {
         // Here you have to obtain metrics as the model gets trained
         
-        match self.prob_function {
+        /* match self.prob_function {
             CustomProbFunctionType::Softmax => Ok(softmax::predict(w_in, w_out, model, inputs)),
             CustomProbFunctionType::Hsoftmax => Err("Error".to_string()),//Hsoftmax::train(self_copy),
             CustomProbFunctionType::NCE => Err("Error".to_string())//NCE::train(self_copy),
-        }
-    }
+        } */
+    } */
 }

@@ -5,22 +5,17 @@ use std::collections::HashMap;
 use std::ops::Mul;
 use ndarray::{arr1, Axis};
 
-use crate::SkipGram;
+use super::implementors::nce_impl::NCE;
 use crate::utils::funcs::{select_k_neg, sigmoid, nce_log_probability};
 use crate::utils::initialization::initialize_weight_matrices;
 use crate::utils::types::{ArrT, ArrT1};
 
-pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String>{ // check if referenced object keeps referenced object-values (and nested values)
+pub fn train(props: &NCE, ctx_map: &HashMap<i32, Vec<i32>>, data: &[String]) -> Result<(Vec<ArrT>, f64), String>{ // check if referenced object keeps referenced object-values (and nested values)
     
-    // initialize the random input and output weights matrix
-    let split = match props.data {
-        Some(ref v) => Some(v.split_at((v.len() as f32*props.train_split) as usize)),
-        None => {
-            None
-        },
-    };
+    
+    let split = data.split_at((data.len() as f32*props.train_split) as usize);
     let k: usize = 10; // attending to original paper's criterion
-    let real_length = split.unwrap().0.len() + split.unwrap().1.len();
+    let real_length = split.0.len() + split.1.len();
     let nn_structure = vec![props.d, real_length as i32];
     let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32).expect("Error initializing matrices");
     
@@ -28,7 +23,7 @@ pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<
     
     let mut overall_error = vec![0.; props.epochs];
     let mut test_errors = vec![0.; props.epochs];
-    let d_len = split.unwrap().0.len() as i32;
+    let d_len = split.0.len() as i32;
     let check_weights = false;
     println!("training split length: {d_len}");
     

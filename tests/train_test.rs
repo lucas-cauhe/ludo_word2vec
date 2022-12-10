@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod train_test {
-    use word_embeddings::{CustomActivationFunction, CustomProbFunctionType, SkipGram};
+    use word_embeddings::{SkipGram, probability_functions::implementors::{nce_impl::NCE, basics::DefaultProbFunction}};
     use ndarray::{ArrayBase, OwnedRepr, Dim};
     use serde::{Deserialize, Deserializer, Serialize, de::{self, SeqAccess}};
-    use std::marker::PhantomData;
+    use std::{marker::PhantomData, cell::Cell};
     use std::fmt;
     
     type T = ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>;
@@ -40,36 +40,34 @@ mod train_test {
     }
 
 
-    
     const HU_MULTIPLIER: f64 =  1.379289341667417; // obtained empiricaly
-    static mut MODEL: SkipGram = SkipGram {
-        w_size: 3,
-        d: 80,
-        lr: 0.005146257850989499,
-        prob_function: CustomProbFunctionType::NCE,
-        activation_fn: CustomActivationFunction::Sigmoid,
-        batches: 32,
-        train_split: 0.85,
-        epochs: 5,
-        data: None,
-        k: None,
-        beta: 0.9,
-        noise_dist: None
-    };
     
     #[test]
     fn train() {
+        let mut model: SkipGram = SkipGram {
+            data: Cell::new(None),
+            prob_function: Box::new(DefaultProbFunction {})
+        };
         let mut trained_weights: Vec<T> = Default::default();
         let mut avg_error: f64 = 0.;
-        unsafe {
-            let ctx_map = MODEL.preprocess_data("/Users/cinderella/Documents/word-embeddings/data/word_set.txt", false).unwrap(); // in case its needed
-            let data = MODEL.data.clone();
-            MODEL.d = (HU_MULTIPLIER * data.unwrap().len() as f64) as i32;
-            let results = MODEL.train(&ctx_map).expect("Smth went wrong");
-            trained_weights = results.0;
-            avg_error = results.1;
-            
-        }
+    
+        let ctx_map = model.preprocess_data("/Users/cinderella/Documents/word-embeddings/data/word_set.txt").unwrap(); // in case its needed
+        let data = model.data.take().unwrap();
+        model.prob_function = Box::new(NCE {
+            w_size: 3,
+            d: (HU_MULTIPLIER * data.len() as f64) as i32,
+            lr: 0.005146257850989499,
+            batches: 32,
+            train_split: 0.85,
+            epochs: 5,
+            k: None,
+            noise_dist: None
+        });
+        let results = model.train(&ctx_map).expect("Smth went wrong");
+        trained_weights = results.0;
+        avg_error = results.1;
+        model.data.set(Some(data));
+    
         let to_write = Writer {
             input_weights: trained_weights[0].rows().into_iter().map(|r| r.to_vec()).collect(),
             output_weights: trained_weights[1].rows().into_iter().map(|r| r.to_vec()).collect()
@@ -78,6 +76,8 @@ mod train_test {
         serde_json::to_string_pretty(&to_write).unwrap()).unwrap();
         println!("Resulting overall_error: {avg_error}");
     }
+
+    
 
 /* 
     #[test]
@@ -97,7 +97,7 @@ mod train_test {
         let w_out = arr1(&out_flatten).into_shape(out_shape).unwrap();
         /* println!("input_weights: {:?}", w_in);
         println!("output_weights: {:?}", w_out); */
-        let _r = unsafe {MODEL.predict(&w_in, &w_out, &MODEL, &inputs).expect("Error while training")};
+        let _r = unsafe {model.predict(&w_in, &w_out, &model, &inputs).expect("Error while training")};
     
     } */
 }

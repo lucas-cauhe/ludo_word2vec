@@ -19,6 +19,8 @@ use utils::plot;
 use ndarray::{arr1};
 use ndarray::{ArrayBase};
 
+use super::implementors::softmax_impl::Softmax;
+
 
 fn feed_forward(weights: &[ArrT], initial_hidden: &ArrT1, window: &[i32], ) -> Result<(ArrT1, ArrT1), String> {
     let mut next_input = initial_hidden.clone();
@@ -112,7 +114,7 @@ fn update_weigths(batch_range: Range<i32>, network_weights: &mut [ArrT], g_avgs:
     }
 }
 
-fn update_batches(props: &SkipGram, d_len: i32, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
+fn update_batches(props: &Softmax, d_len: i32, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
     let mut batch_error = 0.;
     let mut prev_batch = 0;
     let mut next_batch = cmp::min(prev_batch+props.batches, d_len);
@@ -142,7 +144,7 @@ fn update_batches(props: &SkipGram, d_len: i32, nn_structure: &[i32], network_we
     batch_error
 }
 
-fn epochs_update(props: &SkipGram, split: &Option<(&[String], &[String])>, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
+fn epochs_update(props: &Softmax, split: &Option<(&[String], &[String])>, nn_structure: &[i32], network_weights: &mut [ArrT], ctx_map: &HashMap<i32, Vec<i32>>) -> f64 {
 
     let mut epochs = 0;
     let mut overall_error = vec![0.; props.epochs];
@@ -179,30 +181,25 @@ fn epochs_update(props: &SkipGram, split: &Option<(&[String], &[String])>, nn_st
 
 /// implements model training for softmax probability function
 
-pub fn train(props: &SkipGram, ctx_map: &HashMap<i32, Vec<i32>>) -> Result<(Vec<ArrT>, f64), String> {
+pub fn train(props: &Softmax, ctx_map: &HashMap<i32, Vec<i32>>, data: &[String]) -> Result<(Vec<ArrT>, f64), String> {
     
     // initialize the random input and output weights matrix
-    let split = match props.data {
-        Some(ref v) => Some(v.split_at((v.len() as f32*props.train_split) as usize)),
-        None => {
-            None
-        },
-    };
+    let split = data.split_at((data.len() as f32*props.train_split) as usize);
     
-    let real_length = split.unwrap().0.len() + split.unwrap().1.len();
+    let real_length = split.0.len() + split.1.len();
     let nn_structure = vec![props.d, real_length as i32];
     let mut network_weights  = initialize_weight_matrices(&nn_structure, real_length as i32).expect("Error initializing matrices");
     
     println!("Training with model params: {:?}", (props.batches, props.d, props.lr));
 
-    let training_error = epochs_update(props, &split, &nn_structure, &mut network_weights, ctx_map);
+    let training_error = epochs_update(props, &Some(split), &nn_structure, &mut network_weights, ctx_map);
     Ok((network_weights, training_error))
 }
 
 /// implements prediction for softmax probability function
 
 pub fn predict(w_in: &ArrT, w_out: &ArrT, model: &SkipGram, inputs: &[&str]){
-    let vocab = model.data.as_ref().unwrap();
+    let vocab = model.data.take().unwrap();
     for inp in 0..inputs.len() {
         
         if let Some(pos) = vocab.iter().position(|s| s == inputs[inp]){
@@ -217,6 +214,7 @@ pub fn predict(w_in: &ArrT, w_out: &ArrT, model: &SkipGram, inputs: &[&str]){
             println!("Word {:?} not found in training vocabulary", inputs[inp]);
         }
     }
+    model.data.set(Some(vocab));
 
 }   
 
