@@ -2,7 +2,8 @@ extern crate ndarray;
 extern crate ndarray_rand;
 
 use std::collections::HashMap;
-use std::ops::Mul;
+use std::ops::{Mul, Sub};
+use std::vec;
 use ndarray::{arr1, Axis};
 
 use super::implementors::nce_impl::NCE;
@@ -91,16 +92,14 @@ fn update_weights(net_weights: &mut [ArrT], grads: &(ArrT1, ArrT), lr: &f64, neg
 
     
     let mut err = false;
-    net_weights[1].axis_iter_mut(Axis(0)).enumerate()
-        .filter(|(i, _)| negs.contains(&(*i as i32)))
-        .map(|(_, mut val)| val -= &(grads.1.row( {
-            static mut curr_ind: usize = 0;
-            unsafe {curr_ind += 1; 
-            err = curr_ind > negs.len()-1; 
-            curr_ind }
-        }).mul(*lr)));
+    let filtered_array = net_weights[1].rows().into_iter().enumerate().filter(|(i, _)| negs.contains(&(*i as i32)));
+    let mut update_array = vec![];
+    let ind = 1;
+    for (w_ind, weights) in filtered_array {
+        update_array[w_ind] = weights.sub(grads.1.row(ind).mul(*lr));
+    }
     
-    if err {
+    if ind >= negs.len() {
         return Err("Error actualizando weights".to_string());
     }
     Ok(())
